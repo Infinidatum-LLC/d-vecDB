@@ -91,11 +91,15 @@ class DVecDBServer:
         # Check package binaries directory with platform-specific name
         binary_path = binaries_dir / binary_name
         if binary_path.exists() and binary_path.is_file():
+            # Ensure binary has execute permissions
+            self._ensure_executable(binary_path)
             return binary_path
         
         # Fallback to generic binary name
         fallback_path = binaries_dir / "vectordb-server"
         if fallback_path.exists() and fallback_path.is_file():
+            # Ensure binary has execute permissions
+            self._ensure_executable(fallback_path)
             return fallback_path
         
         # Check if binary is in PATH (but not the Python wrapper)
@@ -121,9 +125,24 @@ class DVecDBServer:
         
         for path in common_paths:
             if path.exists() and path.is_file():
+                # Ensure binary has execute permissions
+                self._ensure_executable(path)
                 return path
         
         return None
+    
+    def _ensure_executable(self, binary_path: Path) -> None:
+        """Ensure the binary file has execute permissions."""
+        try:
+            import stat
+            current_mode = binary_path.stat().st_mode
+            # Add execute permissions for owner, group, and others
+            new_mode = current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+            if current_mode != new_mode:
+                binary_path.chmod(new_mode)
+                logger.info(f"Set execute permissions on binary: {binary_path}")
+        except Exception as e:
+            logger.warning(f"Failed to set execute permissions on {binary_path}: {e}")
     
     def _create_config(self) -> str:
         """Create a temporary configuration file."""

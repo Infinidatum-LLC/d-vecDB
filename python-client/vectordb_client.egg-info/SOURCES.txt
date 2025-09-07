@@ -3,6 +3,9 @@ setup.py
 tests/__init__.py
 tests/conftest.py
 tests/conftest_with_embedded_server.py
+tests/debug_health.py
+tests/test-fixed.py
+tests/test-simple.py
 tests/test_async_client.py
 tests/test_example_with_server_utils.py
 tests/test_integration.py

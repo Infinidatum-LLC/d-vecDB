@@ -5,7 +5,7 @@ This package provides a high-performance vector database server with embedded bi
 for multiple platforms.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.5"
 __author__ = "Durai"
 __email__ = "durai@infinidatum.com"
 

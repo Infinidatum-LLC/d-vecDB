@@ -25,7 +25,7 @@ def read_requirements():
 
 setup(
     name="vectordb-client",
-    version="0.1.0",
+    version="0.1.1",
     author="d-vecDB Team",
     author_email="durai@infinidatum.com",
     description="Python client library for d-vecDB vector database",

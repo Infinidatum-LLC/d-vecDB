@@ -401,8 +401,9 @@ class GrpcClient:
             response = self.stub.Health(request, timeout=self.timeout)
             
             return HealthResponse(
-                healthy=response.healthy,
-                status=response.status
+                success=response.healthy,
+                data="OK" if response.healthy else "NOT_OK",
+                error=None
             )
             
         except grpc.RpcError as e:

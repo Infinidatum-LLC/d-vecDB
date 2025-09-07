@@ -191,6 +191,17 @@ def cmd_version(args):
         if server._binary_path:
             print(f"Binary location: {server._binary_path}")
             
+            # Check if binary exists and has execute permissions
+            import stat
+            try:
+                binary_stat = server._binary_path.stat()
+                has_exec = bool(binary_stat.st_mode & stat.S_IXUSR)
+                print(f"Binary permissions: {'executable' if has_exec else 'not executable'}")
+                print(f"Binary size: {binary_stat.st_size / 1024 / 1024:.1f} MB")
+            except Exception as e:
+                print(f"Binary stat error: {e}")
+            
+            # Try version check
             try:
                 import subprocess
                 result = subprocess.run([str(server._binary_path), "--version"], 
@@ -198,9 +209,17 @@ def cmd_version(args):
                 if result.returncode == 0:
                     print(f"Binary version: {result.stdout.strip()}")
                 else:
-                    print("Binary: Found but version check failed")
-            except Exception:
-                print("Binary: Found but not accessible")
+                    print(f"Binary: Found but version check failed (exit code: {result.returncode})")
+                    if result.stderr:
+                        print(f"Error output: {result.stderr.strip()}")
+            except subprocess.TimeoutExpired:
+                print("Binary: Found but version check timed out")
+            except PermissionError:
+                print("Binary: Found but permission denied - trying to fix permissions...")
+                server._ensure_executable(server._binary_path)
+                print("Execute permissions set - please try again")
+            except Exception as e:
+                print(f"Binary: Found but not accessible - {type(e).__name__}: {e}")
         else:
             print("Binary: Not found")
     except RuntimeError as e:
