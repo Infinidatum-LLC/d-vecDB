@@ -1,17 +1,16 @@
 use vectordb_common::{Result, VectorDbError};
 use vectordb_common::types::*;
 use vectordb_storage::StorageEngine;
-use vectordb_index::{VectorIndex, HnswIndex};
-use std::collections::HashMap;
+use vectordb_index::{VectorIndex, HnswRsIndex};  // Use production-ready HNSW
 use std::sync::Arc;
-use parking_lot::RwLock;
+use dashmap::DashMap;
 use tracing::info;
 use metrics::{counter, histogram, gauge};
 
 /// Main vector store engine that coordinates storage and indexing
 pub struct VectorStore {
     storage: StorageEngine,
-    indexes: Arc<RwLock<HashMap<CollectionId, Box<dyn VectorIndex>>>>,
+    indexes: Arc<DashMap<CollectionId, Box<dyn VectorIndex>>>,
 }
 
 impl VectorStore {
@@ -21,7 +20,7 @@ impl VectorStore {
 
         let mut store = Self {
             storage,
-            indexes: Arc::new(RwLock::new(HashMap::new())),
+            indexes: Arc::new(DashMap::new()),
         };
 
         // Rebuild indexes for existing collections
@@ -37,15 +36,15 @@ impl VectorStore {
         
         // Create storage
         self.storage.create_collection(config).await?;
-        
-        // Create index
-        let index = Box::new(HnswIndex::new(
+
+        // Create index - using production-ready hnsw_rs
+        let index = Box::new(HnswRsIndex::new(
             config.index_config.clone(),
             config.distance_metric,
             config.dimension,
         ));
-        
-        self.indexes.write().insert(config.name.clone(), index);
+
+        self.indexes.insert(config.name.clone(), index);
         
         info!("Collection created successfully: {}", config.name);
         Ok(())
@@ -57,7 +56,7 @@ impl VectorStore {
         counter!("vectorstore.collections.deleted").increment(1);
         
         self.storage.delete_collection(name).await?;
-        self.indexes.write().remove(name);
+        self.indexes.remove(name);
         
         info!("Collection deleted successfully: {}", name);
         Ok(())
@@ -85,28 +84,11 @@ impl VectorStore {
         // Insert into storage
         self.storage.insert_vector(collection, vector).await?;
 
-        // Insert into index - Move expensive HNSW insert to blocking thread pool
-        // This prevents the write lock from blocking the async runtime
-        let collection_name = collection.to_string();
-        let vector_id = vector.id.clone();
-        let vector_data = vector.data.clone();
-        let vector_metadata = vector.metadata.clone();
-
-        // Clone Arc to move into blocking task
-        let indexes = Arc::clone(&self.indexes);
-
-        // Spawn blocking task to avoid holding write lock in async context
-        tokio::task::spawn_blocking(move || {
-            let mut indexes_guard = indexes.write();
-            if let Some(index) = indexes_guard.get_mut(&collection_name) {
-                index.insert(vector_id, &vector_data, vector_metadata)?;
-            }
-            Ok::<(), VectorDbError>(())
-        })
-        .await
-        .map_err(|e| VectorDbError::Internal {
-            message: format!("Failed to spawn blocking task: {}", e)
-        })??;
+        // OPTIMIZATION: Direct insert without spawn_blocking overhead
+        // hnsw_rs is thread-safe, DashMap provides lock-free access
+        if let Some(mut index) = self.indexes.get_mut(collection) {
+            index.insert(vector.id, &vector.data, vector.metadata.clone())?;
+        }
 
         histogram!("vectorstore.insert.duration").record(start.elapsed().as_secs_f64());
         Ok(())
@@ -116,17 +98,17 @@ impl VectorStore {
     pub async fn batch_insert(&self, collection: &str, vectors: &[Vector]) -> Result<()> {
         let start = std::time::Instant::now();
         counter!("vectorstore.vectors.batch_inserted").increment(vectors.len() as u64);
-        
+
         if vectors.is_empty() {
             return Ok(());
         }
-        
+
         // Validate collection exists
         let config = self.get_collection_config(collection)?
             .ok_or_else(|| VectorDbError::CollectionNotFound {
                 name: collection.to_string(),
             })?;
-        
+
         // Validate all vector dimensions
         for vector in vectors {
             if vector.data.len() != config.dimension {
@@ -136,38 +118,24 @@ impl VectorStore {
                 });
             }
         }
-        
-        // Insert into storage
+
+        // Insert into storage (async operation)
         self.storage.batch_insert(collection, vectors).await?;
 
-        // Insert into index - Use optimized batch_insert method
-        // This uses lock-free DashMap and parallel processing for huge speedup!
-        let collection_name = collection.to_string();
-        // Prepare vectors for batch insert
+        // OPTIMIZATION: Direct batch insert without spawn_blocking overhead
+        // hnsw_rs is already thread-safe with internal parallel processing
+        // Avoiding spawn_blocking + cloning saves significant overhead
+
+        // Prepare vectors for batch insert (zero-copy where possible)
         let vectors_to_insert: Vec<(VectorId, Vec<f32>, Option<_>)> = vectors.iter()
             .map(|v| (v.id, v.data.clone(), v.metadata.clone()))
             .collect();
 
-        // Clone Arc to move into blocking task
-        let indexes = Arc::clone(&self.indexes);
-
-        // Spawn blocking task for batch insert
-        // The new batch_insert method is MUCH faster than sequential inserts:
-        // - Phase 1: Parallel node preparation (lock-free)
-        // - Phase 2: Parallel DashMap insertion (lock-free)
-        // - Phase 3: Sequential graph connections (but with DashMap overhead minimized)
-        tokio::task::spawn_blocking(move || {
-            let mut indexes_guard = indexes.write();
-            if let Some(index) = indexes_guard.get_mut(&collection_name) {
-                // Use optimized batch_insert instead of loop
-                index.batch_insert(vectors_to_insert)?;
-            }
-            Ok::<(), VectorDbError>(())
-        })
-        .await
-        .map_err(|e| VectorDbError::Internal {
-            message: format!("Failed to spawn blocking task for batch insert: {}", e)
-        })??;
+        // Direct call to batch_insert - DashMap provides lock-free access
+        // hnsw_rs::parallel_insert uses rayon internally for multi-threading
+        if let Some(mut index) = self.indexes.get_mut(collection) {
+            index.batch_insert(vectors_to_insert)?;
+        }
 
         histogram!("vectorstore.batch_insert.duration").record(start.elapsed().as_secs_f64());
         info!("Batch inserted {} vectors into {}", vectors.len(), collection);
@@ -193,9 +161,8 @@ impl VectorStore {
             });
         }
         
-        // Search index
-        let indexes = self.indexes.read();
-        let index = indexes
+        // Search index - DashMap provides lock-free reads
+        let index = self.indexes
             .get(&request.collection)
             .ok_or_else(|| VectorDbError::CollectionNotFound {
                 name: request.collection.clone(),
@@ -224,13 +191,12 @@ impl VectorStore {
         
         // Delete from storage
         let storage_deleted = self.storage.delete_vector(collection, id).await?;
-        
-        // Delete from index
-        let mut indexes = self.indexes.write();
-        if let Some(index) = indexes.get_mut(collection) {
+
+        // Delete from index - DashMap provides lock-free access
+        if let Some(mut index) = self.indexes.get_mut(collection) {
             index.delete(id)?;
         }
-        
+
         Ok(storage_deleted)
     }
     
@@ -264,17 +230,16 @@ impl VectorStore {
     /// Get collection statistics
     pub async fn get_collection_stats(&self, name: &str) -> Result<Option<CollectionStats>> {
         let mut stats = self.storage.get_collection_stats(name).await?;
-        
+
         if let Some(ref mut stats) = stats {
-            // Add index statistics
-            let indexes = self.indexes.read();
-            if let Some(index) = indexes.get(name) {
+            // Add index statistics - DashMap provides lock-free reads
+            if let Some(index) = self.indexes.get(name) {
                 let index_stats = index.stats();
                 stats.vector_count = index_stats.vector_count;
                 stats.memory_usage += index_stats.memory_usage;
             }
         }
-        
+
         Ok(stats)
     }
     
@@ -292,18 +257,18 @@ impl VectorStore {
         for collection_name in collections {
             if let Some(config) = self.storage.get_collection_config(&collection_name)? {
                 info!("Rebuilding index for collection: {}", collection_name);
-                
-                let index = Box::new(HnswIndex::new(
+
+                let index = Box::new(HnswRsIndex::new(
                     config.index_config.clone(),
                     config.distance_metric,
                     config.dimension,
                 ));
-                
+
                 // TODO: Iterate through all vectors in storage and rebuild index
                 // This would require implementing an iterator over stored vectors
                 // For now, we create an empty index
-                
-                self.indexes.write().insert(collection_name.clone(), index);
+
+                self.indexes.insert(collection_name.clone(), index);
             }
         }
         

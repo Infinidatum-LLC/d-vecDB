@@ -14,8 +14,6 @@ pub use failover::FailoverManager;
 pub use router::QueryRouter;
 pub use types::*;
 
-use anyhow::Result;
-
 /// Cluster configuration
 #[derive(Debug, Clone)]
 pub struct ClusterConfig {

@@ -25,9 +25,9 @@ class DVecDBBenchmark(VectorDBBenchmark):
 
     def connect(self):
         """Connect to d-vecDB"""
-        from vectordb_client import VectorDBClient
+        from vectordb_client.rest import RestClient
 
-        self.client = VectorDBClient(
+        self.client = RestClient(
             host=self.db_config.get('host', 'localhost'),
             port=self.db_config.get('port', 8080)
         )
@@ -83,7 +83,9 @@ class DVecDBBenchmark(VectorDBBenchmark):
         metadata: Optional[List[Dict[str, Any]]] = None,
         batch_size: int = 100
     ):
-        """Insert vectors in batches"""
+        """Insert vectors in batches using optimized batch API"""
+        from vectordb_client.types import Vector
+
         num_vectors = len(vectors)
         num_batches = (num_vectors + batch_size - 1) // batch_size
 
@@ -95,17 +97,19 @@ class DVecDBBenchmark(VectorDBBenchmark):
                 batch_vectors = vectors[start_idx:end_idx]
                 batch_metadata = metadata[start_idx:end_idx] if metadata else None
 
-                # Insert batch
-                for j, vector in enumerate(batch_vectors):
+                # Build batch of Vector objects for optimized batch insert
+                vector_objects = []
+                for j, vector_data in enumerate(batch_vectors):
                     vector_id = f"vec_{start_idx + j}"
                     meta = batch_metadata[j] if batch_metadata else None
-
-                    self.client.insert_simple(
-                        collection_name=collection,
-                        vector_id=vector_id,
-                        vector_data=vector,
+                    vector_objects.append(Vector(
+                        id=vector_id,
+                        data=vector_data.tolist(),
                         metadata=meta
-                    )
+                    ))
+
+                # Use optimized batch insert API (calls /vectors/batch endpoint)
+                self.client.insert_vectors(collection, vector_objects)
 
                 pbar.update(len(batch_vectors))
 

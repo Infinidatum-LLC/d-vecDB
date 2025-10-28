@@ -16,3 +16,4 @@ tracing = { workspace = true }
 rand = "0.8"
 dashmap = { workspace = true }
 rayon = { workspace = true }
+hnsw_rs = { workspace = true }

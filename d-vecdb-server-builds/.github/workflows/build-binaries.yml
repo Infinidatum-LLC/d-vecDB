@@ -1,0 +1,131 @@
+name: Build d-vecDB Server Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: rdmurugan/d-vecDB
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: |
+          cd server
+          cargo build --release --bin vectordb-server
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectordb-server-linux-x64
+          path: target/release/vectordb-server
+
+  build-linux-musl:
+    name: Build Linux x86_64 (musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: rdmurugan/d-vecDB
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: |
+          cd server
+          cargo build --release --bin vectordb-server --target x86_64-unknown-linux-musl
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectordb-server-linux-musl-x64
+          path: target/x86_64-unknown-linux-musl/release/vectordb-server
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: rdmurugan/d-vecDB
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: |
+          cd server
+          cargo build --release --bin vectordb-server --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectordb-server-macos-${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}
+          path: target/${{ matrix.target }}/release/vectordb-server
+
+  build-windows:
+    name: Build Windows x86_64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: rdmurugan/d-vecDB
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: |
+          cd server
+          cargo build --release --bin vectordb-server
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectordb-server-windows-x64
+          path: target/release/vectordb-server.exe
+
+  create-release:
+    name: Create Release
+    needs: [build-linux, build-linux-musl, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            vectordb-server-linux-x64/vectordb-server
+            vectordb-server-linux-musl-x64/vectordb-server
+            vectordb-server-macos-arm64/vectordb-server
+            vectordb-server-macos-x64/vectordb-server
+            vectordb-server-windows-x64/vectordb-server.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

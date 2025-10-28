@@ -49,6 +49,7 @@ nalgebra = "0.32"
 simdeez = { version = "2.0.0-dev5" }
 half = "2.3"
 rayon = "1.8"  # Parallel processing
+hnsw_rs = "0.3"  # Optimized HNSW (SIMD disabled for ARM compatibility)
 
 # GPU acceleration
 wgpu = "0.20"

@@ -10,6 +10,7 @@ vectordb-index = { path = "../index" }
 tokio = { workspace = true }
 serde = { workspace = true }
 parking_lot = { workspace = true }
+dashmap = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }

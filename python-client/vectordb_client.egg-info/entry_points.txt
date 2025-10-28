@@ -1,2 +1,0 @@
-[console_scripts]
-vectordb-cli = vectordb_client.cli:main

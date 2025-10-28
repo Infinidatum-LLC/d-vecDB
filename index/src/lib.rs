@@ -1,11 +1,13 @@
 pub mod hnsw;
 pub mod node;
+pub mod hnsw_rs_index;  // New production-ready HNSW
 
 use vectordb_common::Result;
 use vectordb_common::types::*;
 
 pub use hnsw::*;
 pub use node::*;
+pub use hnsw_rs_index::HnswRsIndex;  // Export the new implementation
 
 /// Search result with distance and metadata
 #[derive(Debug, Clone)]
