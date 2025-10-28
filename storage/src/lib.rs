@@ -336,9 +336,33 @@ impl CollectionStorage {
     }
     
     async fn batch_insert(&self, vectors: &[Vector]) -> Result<()> {
-        for vector in vectors {
-            self.insert(vector).await?;
+        if vectors.is_empty() {
+            return Ok(());
         }
+
+        // Validate all vectors first
+        for vector in vectors {
+            if vector.data.len() != self.config.dimension {
+                return Err(VectorDbError::InvalidDimension {
+                    expected: self.config.dimension,
+                    actual: vector.data.len(),
+                });
+            }
+        }
+
+        // Serialize all vectors into a single buffer to reduce async calls
+        // This is much faster than calling append() for each vector
+        let mut batch_buffer = Vec::with_capacity(vectors.len() * (self.config.dimension * 4 + 100));
+
+        for vector in vectors {
+            let serialized = bincode::serialize(vector)
+                .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
+            batch_buffer.extend_from_slice(&serialized);
+        }
+
+        // Single async write for entire batch
+        self.data_file.append(&batch_buffer).await?;
+
         Ok(())
     }
     

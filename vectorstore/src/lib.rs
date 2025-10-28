@@ -150,9 +150,15 @@ impl VectorStore {
         let indexes = Arc::clone(&self.indexes);
 
         // Spawn blocking task for batch insert
+        // The key optimization here is to minimize lock contention and do all inserts
+        // in a single critical section rather than acquiring/releasing locks per vector
         tokio::task::spawn_blocking(move || {
             let mut indexes_guard = indexes.write();
             if let Some(index) = indexes_guard.get_mut(&collection_name) {
+                // Process all vectors in the batch
+                // Note: HNSW inserts are inherently sequential due to graph structure dependencies
+                // Each insert modifies the graph, affecting subsequent inserts
+                // Future optimization: investigate batch HNSW algorithms that can defer graph updates
                 for vector in vectors_to_insert {
                     index.insert(vector.id, &vector.data, vector.metadata)?;
                 }
