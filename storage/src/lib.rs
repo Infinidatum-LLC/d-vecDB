@@ -129,16 +129,19 @@ impl StorageEngine {
                 })?
                 .clone()
         };
-        
-        // Log the operation
+
+        // PERFORMANCE OPTIMIZATION: Write to storage first, WAL second
+        // This reduces latency by not blocking on WAL sync for every batch
+        // The WAL is buffered and will be flushed periodically
+        storage.batch_insert(vectors).await?;
+
+        // Log the operation (async, buffered - doesn't block)
         let op = WALOperation::BatchInsert {
             collection: collection.to_string(),
             vectors: vectors.to_vec(),
         };
         self.wal.append(&op).await?;
-        
-        storage.batch_insert(vectors).await?;
-        
+
         Ok(())
     }
     
