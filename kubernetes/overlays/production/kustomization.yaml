@@ -1,0 +1,67 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dvecdb-prod
+
+namePrefix: prod-
+
+commonLabels:
+  environment: production
+
+bases:
+- ../../base
+
+replicas:
+- name: dvecdb
+  count: 3
+
+patches:
+- patch: |-
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: dvecdb
+    spec:
+      template:
+        metadata:
+          annotations:
+            backup.velero.io/backup-volumes: data
+        spec:
+          containers:
+          - name: dvecdb
+            resources:
+              requests:
+                memory: "4Gi"
+                cpu: "1"
+              limits:
+                memory: "16Gi"
+                cpu: "8"
+          volumeClaimTemplates:
+          - metadata:
+              name: data
+              annotations:
+                backup.velero.io/backup-volumes: data
+            spec:
+              resources:
+                requests:
+                  storage: 200Gi
+              storageClassName: fast-ssd  # Use high-performance storage
+
+- patch: |-
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: dvecdb-rest
+    spec:
+      type: LoadBalancer
+      loadBalancerSourceRanges:
+      - 10.0.0.0/8  # Restrict to internal IPs
+
+configMapGenerator:
+- name: dvecdb-config
+  behavior: merge
+  literals:
+  - LOG_LEVEL=warn
+  - RUST_LOG=warn
+  - TOKIO_WORKER_THREADS=16
+  - ENABLE_METRICS=true

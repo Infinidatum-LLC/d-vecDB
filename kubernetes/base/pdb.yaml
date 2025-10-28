@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dvecdb-pdb
+  labels:
+    app: dvecdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: dvecdb
+  maxUnavailable: 0
+  unhealthyPodEvictionPolicy: IfHealthyBudget

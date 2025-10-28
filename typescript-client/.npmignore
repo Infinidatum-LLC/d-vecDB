@@ -1,0 +1,14 @@
+src/
+__tests__/
+*.test.ts
+*.spec.ts
+.eslintrc.json
+.prettierrc.json
+jest.config.js
+tsconfig.json
+.gitignore
+node_modules/
+coverage/
+.DS_Store
+.env
+*.log

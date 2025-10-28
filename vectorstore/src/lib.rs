@@ -3,6 +3,7 @@ use vectordb_common::types::*;
 use vectordb_storage::StorageEngine;
 use vectordb_index::{VectorIndex, HnswIndex};
 use std::collections::HashMap;
+use std::sync::Arc;
 use parking_lot::RwLock;
 use tracing::info;
 use metrics::{counter, histogram, gauge};
@@ -10,22 +11,22 @@ use metrics::{counter, histogram, gauge};
 /// Main vector store engine that coordinates storage and indexing
 pub struct VectorStore {
     storage: StorageEngine,
-    indexes: RwLock<HashMap<CollectionId, Box<dyn VectorIndex>>>,
+    indexes: Arc<RwLock<HashMap<CollectionId, Box<dyn VectorIndex>>>>,
 }
 
 impl VectorStore {
     /// Create a new vector store
     pub async fn new<P: AsRef<std::path::Path>>(data_dir: P) -> Result<Self> {
         let storage = StorageEngine::new(data_dir).await?;
-        
+
         let mut store = Self {
             storage,
-            indexes: RwLock::new(HashMap::new()),
+            indexes: Arc::new(RwLock::new(HashMap::new())),
         };
-        
+
         // Rebuild indexes for existing collections
         store.rebuild_indexes().await?;
-        
+
         Ok(store)
     }
     
@@ -83,13 +84,30 @@ impl VectorStore {
         
         // Insert into storage
         self.storage.insert_vector(collection, vector).await?;
-        
-        // Insert into index
-        let mut indexes = self.indexes.write();
-        if let Some(index) = indexes.get_mut(collection) {
-            index.insert(vector.id, &vector.data, vector.metadata.clone())?;
-        }
-        
+
+        // Insert into index - Move expensive HNSW insert to blocking thread pool
+        // This prevents the write lock from blocking the async runtime
+        let collection_name = collection.to_string();
+        let vector_id = vector.id.clone();
+        let vector_data = vector.data.clone();
+        let vector_metadata = vector.metadata.clone();
+
+        // Clone Arc to move into blocking task
+        let indexes = Arc::clone(&self.indexes);
+
+        // Spawn blocking task to avoid holding write lock in async context
+        tokio::task::spawn_blocking(move || {
+            let mut indexes_guard = indexes.write();
+            if let Some(index) = indexes_guard.get_mut(&collection_name) {
+                index.insert(vector_id, &vector_data, vector_metadata)?;
+            }
+            Ok::<(), VectorDbError>(())
+        })
+        .await
+        .map_err(|e| VectorDbError::Internal {
+            message: format!("Failed to spawn blocking task: {}", e)
+        })??;
+
         histogram!("vectorstore.insert.duration").record(start.elapsed().as_secs_f64());
         Ok(())
     }
@@ -121,15 +139,31 @@ impl VectorStore {
         
         // Insert into storage
         self.storage.batch_insert(collection, vectors).await?;
-        
-        // Insert into index
-        let mut indexes = self.indexes.write();
-        if let Some(index) = indexes.get_mut(collection) {
-            for vector in vectors {
-                index.insert(vector.id, &vector.data, vector.metadata.clone())?;
+
+        // Insert into index - Move expensive HNSW batch insert to blocking thread pool
+        // This is critical for batch operations as they hold the lock even longer
+        let collection_name = collection.to_string();
+        // Clone vector data to move into blocking task
+        let vectors_to_insert: Vec<Vector> = vectors.to_vec();
+
+        // Clone Arc to move into blocking task
+        let indexes = Arc::clone(&self.indexes);
+
+        // Spawn blocking task for batch insert
+        tokio::task::spawn_blocking(move || {
+            let mut indexes_guard = indexes.write();
+            if let Some(index) = indexes_guard.get_mut(&collection_name) {
+                for vector in vectors_to_insert {
+                    index.insert(vector.id, &vector.data, vector.metadata)?;
+                }
             }
-        }
-        
+            Ok::<(), VectorDbError>(())
+        })
+        .await
+        .map_err(|e| VectorDbError::Internal {
+            message: format!("Failed to spawn blocking task for batch insert: {}", e)
+        })??;
+
         histogram!("vectorstore.batch_insert.duration").record(start.elapsed().as_secs_f64());
         info!("Batch inserted {} vectors into {}", vectors.len(), collection);
         Ok(())

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/server/src/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/server/src/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/common/src/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/proto/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

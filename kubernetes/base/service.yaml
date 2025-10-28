@@ -1,0 +1,105 @@
+---
+# Headless service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: dvecdb-headless
+  labels:
+    app: dvecdb
+    component: database
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: dvecdb
+  ports:
+  - name: rest
+    port: 8080
+    targetPort: rest
+    protocol: TCP
+  - name: grpc
+    port: 9090
+    targetPort: grpc
+    protocol: TCP
+  - name: metrics
+    port: 9091
+    targetPort: metrics
+    protocol: TCP
+
+---
+# Service for REST API access
+apiVersion: v1
+kind: Service
+metadata:
+  name: dvecdb-rest
+  labels:
+    app: dvecdb
+    component: database
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # AWS specific
+spec:
+  type: LoadBalancer
+  selector:
+    app: dvecdb
+  ports:
+  - name: rest
+    port: 8080
+    targetPort: rest
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+
+---
+# Service for gRPC access
+apiVersion: v1
+kind: Service
+metadata:
+  name: dvecdb-grpc
+  labels:
+    app: dvecdb
+    component: database
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer
+  selector:
+    app: dvecdb
+  ports:
+  - name: grpc
+    port: 9090
+    targetPort: grpc
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+
+---
+# ClusterIP service for internal access
+apiVersion: v1
+kind: Service
+metadata:
+  name: dvecdb
+  labels:
+    app: dvecdb
+    component: database
+spec:
+  type: ClusterIP
+  selector:
+    app: dvecdb
+  ports:
+  - name: rest
+    port: 8080
+    targetPort: rest
+    protocol: TCP
+  - name: grpc
+    port: 9090
+    targetPort: grpc
+    protocol: TCP
+  - name: metrics
+    port: 9091
+    targetPort: metrics
+    protocol: TCP

@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/**)",
+      "Bash(rm:*)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/grpc/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/rest/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/examples/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/examples/**)",
+      "Read(/Users/durai/Documents/GitHub/d-vecDB/python-client/vectordb_client/examples/**)",
+      "Bash(python test:*)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Bash(python:*)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)",
+      "Bash(pip show:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(pip install:*)",
+      "Read(//opt/anaconda3/lib/python3.13/site-packages/vectordb_client/**)",
+      "Read(//Users/durai/Documents/GitHub/d-vecDB/python-client/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

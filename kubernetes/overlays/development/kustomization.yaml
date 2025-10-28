@@ -1,0 +1,50 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dvecdb-dev
+
+namePrefix: dev-
+
+commonLabels:
+  environment: development
+
+bases:
+- ../../base
+
+replicas:
+- name: dvecdb
+  count: 1
+
+patches:
+- patch: |-
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: dvecdb
+    spec:
+      template:
+        spec:
+          containers:
+          - name: dvecdb
+            resources:
+              requests:
+                memory: "1Gi"
+                cpu: "250m"
+              limits:
+                memory: "4Gi"
+                cpu: "2"
+          volumeClaimTemplates:
+          - metadata:
+              name: data
+            spec:
+              resources:
+                requests:
+                  storage: 20Gi
+
+configMapGenerator:
+- name: dvecdb-config
+  behavior: merge
+  literals:
+  - LOG_LEVEL=debug
+  - RUST_LOG=debug
+  - ENABLE_TRACING=true

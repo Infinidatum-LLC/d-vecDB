@@ -1,0 +1,60 @@
+{
+  "name": "d-vecdb",
+  "version": "0.1.7",
+  "description": "TypeScript/JavaScript client for d-vecDB - A high-performance vector database",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "vector-database",
+    "vector-search",
+    "embeddings",
+    "similarity-search",
+    "machine-learning",
+    "ai",
+    "hnsw",
+    "typescript",
+    "javascript"
+  ],
+  "author": "d-vecDB Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/d-vecDB.git",
+    "directory": "typescript-client"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/d-vecDB/issues"
+  },
+  "homepage": "https://github.com/yourusername/d-vecDB#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.5.0",
+    "prettier": "^3.0.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -2,6 +2,7 @@ pub mod grpc;
 pub mod rest;
 pub mod config;
 pub mod metrics;
+pub mod health;
 
 use vectordb_vectorstore::VectorStore;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ pub use config::*;
 pub use grpc::*;
 pub use rest::*;
 pub use metrics::*;
+pub use health::*;
 
 /// Main server application
 pub struct VectorDbServer {

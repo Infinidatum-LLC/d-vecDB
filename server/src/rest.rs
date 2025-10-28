@@ -2,6 +2,7 @@ use vectordb_vectorstore::VectorStore;
 use vectordb_common::types::*;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::time::Duration;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -13,16 +14,18 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, error, instrument};
 use uuid::Uuid;
 use std::net::SocketAddr;
+use tokio::time::timeout;
 
 /// REST API response wrapper
 #[derive(Serialize)]
+#[serde(bound(serialize = "T: Serialize"))]
 struct ApiResponse<T> {
     success: bool,
     data: Option<T>,
     error: Option<String>,
 }
 
-impl<T> ApiResponse<T> {
+impl<T: Serialize> ApiResponse<T> {
     fn success(data: T) -> Self {
         Self {
             success: true,
@@ -30,7 +33,7 @@ impl<T> ApiResponse<T> {
             error: None,
         }
     }
-    
+
     fn error(message: String) -> Self {
         Self {
             success: false,
@@ -48,6 +51,27 @@ struct CreateCollectionRequest {
     distance_metric: DistanceMetric,
     vector_type: VectorType,
     index_config: Option<IndexConfig>,
+}
+
+/// Collection creation response
+#[derive(Serialize, Debug)]
+struct CreateCollectionResponse {
+    name: String,
+    message: String,
+}
+
+/// Collection deletion response
+#[derive(Serialize, Debug)]
+struct DeleteCollectionResponse {
+    name: String,
+    message: String,
+}
+
+/// Vector update response
+#[derive(Serialize, Debug)]
+struct UpdateVectorResponse {
+    id: String,
+    message: String,
 }
 
 /// Vector insertion request
@@ -87,17 +111,20 @@ type AppState = Arc<VectorStore>;
 async fn create_collection(
     State(state): State<AppState>,
     Json(payload): Json<CreateCollectionRequest>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<ApiResponse<CreateCollectionResponse>>, StatusCode> {
     let config = CollectionConfig {
-        name: payload.name,
+        name: payload.name.clone(),
         dimension: payload.dimension,
         distance_metric: payload.distance_metric,
         vector_type: payload.vector_type,
         index_config: payload.index_config.unwrap_or_default(),
     };
-    
+
     match state.create_collection(&config).await {
-        Ok(()) => Ok(Json(ApiResponse::success(()))),
+        Ok(()) => Ok(Json(ApiResponse::success(CreateCollectionResponse {
+            name: payload.name,
+            message: "Collection created successfully".to_string(),
+        }))),
         Err(e) => {
             error!("Failed to create collection: {}", e);
             Ok(Json(ApiResponse::error(e.to_string())))
@@ -140,9 +167,12 @@ async fn get_collection_info(
 async fn delete_collection(
     State(state): State<AppState>,
     Path(collection_name): Path<String>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<ApiResponse<DeleteCollectionResponse>>, StatusCode> {
     match state.delete_collection(&collection_name).await {
-        Ok(()) => Ok(Json(ApiResponse::success(()))),
+        Ok(()) => Ok(Json(ApiResponse::success(DeleteCollectionResponse {
+            name: collection_name.clone(),
+            message: "Collection deleted successfully".to_string(),
+        }))),
         Err(e) => {
             error!("Failed to delete collection: {}", e);
             Ok(Json(ApiResponse::error(e.to_string())))
@@ -169,12 +199,21 @@ async fn insert_vector(
         data: payload.data,
         metadata: payload.metadata,
     };
-    
-    match state.insert(&collection_name, &vector).await {
-        Ok(()) => Ok(Json(ApiResponse::success(vector_id.to_string()))),
-        Err(e) => {
+
+    // Add timeout to prevent indefinite hangs (30 seconds default)
+    let insert_timeout = Duration::from_secs(30);
+    match timeout(insert_timeout, state.insert(&collection_name, &vector)).await {
+        Ok(Ok(())) => Ok(Json(ApiResponse::success(vector_id.to_string()))),
+        Ok(Err(e)) => {
             error!("Failed to insert vector: {}", e);
             Ok(Json(ApiResponse::error(e.to_string())))
+        }
+        Err(_) => {
+            error!("Vector insertion timed out after {:?}", insert_timeout);
+            Ok(Json(ApiResponse::error(format!(
+                "Operation timed out after {:?}. The server may be under heavy load.",
+                insert_timeout
+            ))))
         }
     }
 }
@@ -204,12 +243,22 @@ async fn batch_insert_vectors(
             metadata: vector_req.metadata,
         });
     }
-    
-    match state.batch_insert(&collection_name, &vectors).await {
-        Ok(()) => Ok(Json(ApiResponse::success(vector_ids))),
-        Err(e) => {
+
+    // Add timeout for batch insert (60 seconds for larger batches)
+    let batch_timeout = Duration::from_secs(60);
+    match timeout(batch_timeout, state.batch_insert(&collection_name, &vectors)).await {
+        Ok(Ok(())) => Ok(Json(ApiResponse::success(vector_ids))),
+        Ok(Err(e)) => {
             error!("Failed to batch insert vectors: {}", e);
             Ok(Json(ApiResponse::error(e.to_string())))
+        }
+        Err(_) => {
+            error!("Batch insert timed out after {:?} for {} vectors", batch_timeout, vectors.len());
+            Ok(Json(ApiResponse::error(format!(
+                "Batch operation timed out after {:?} while inserting {} vectors. Try reducing batch size.",
+                batch_timeout,
+                vectors.len()
+            ))))
         }
     }
 }
@@ -281,18 +330,21 @@ async fn update_vector(
     State(state): State<AppState>,
     Path((collection_name, vector_id)): Path<(String, String)>,
     Json(payload): Json<InsertVectorRequest>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<ApiResponse<UpdateVectorResponse>>, StatusCode> {
     let uuid = Uuid::parse_str(&vector_id)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
-    
+
     let vector = Vector {
         id: uuid,
         data: payload.data,
         metadata: payload.metadata,
     };
-    
+
     match state.update(&collection_name, &vector).await {
-        Ok(()) => Ok(Json(ApiResponse::success(()))),
+        Ok(()) => Ok(Json(ApiResponse::success(UpdateVectorResponse {
+            id: vector_id.clone(),
+            message: "Vector updated successfully".to_string(),
+        }))),
         Err(e) => {
             error!("Failed to update vector: {}", e);
             Ok(Json(ApiResponse::error(e.to_string())))
@@ -314,7 +366,7 @@ async fn get_stats(
     }
 }
 
-/// Health check
+/// Health check (backward compatibility - redirects to simple health)
 #[instrument]
 async fn health() -> Result<Json<ApiResponse<String>>, StatusCode> {
     Ok(Json(ApiResponse::success("OK".to_string())))
@@ -322,13 +374,15 @@ async fn health() -> Result<Json<ApiResponse<String>>, StatusCode> {
 
 /// Create REST API router
 pub fn create_router(state: AppState) -> Router {
+    use crate::health;
+
     Router::new()
         // Collection management
         .route("/collections", post(create_collection))
         .route("/collections", get(list_collections))
         .route("/collections/:collection", get(get_collection_info))
         .route("/collections/:collection", delete(delete_collection))
-        
+
         // Vector operations
         .route("/collections/:collection/vectors", post(insert_vector))
         .route("/collections/:collection/vectors/batch", post(batch_insert_vectors))
@@ -336,11 +390,17 @@ pub fn create_router(state: AppState) -> Router {
         .route("/collections/:collection/vectors/:vector_id", get(get_vector))
         .route("/collections/:collection/vectors/:vector_id", put(update_vector))
         .route("/collections/:collection/vectors/:vector_id", delete(delete_vector))
-        
+
         // Server operations
         .route("/stats", get(get_stats))
-        .route("/health", get(health))
-        
+
+        // Health check endpoints
+        .route("/health", get(health))                           // Backward compatibility
+        .route("/health/live", get(health::health_liveness))     // Kubernetes liveness probe
+        .route("/health/ready", get(health::health_readiness))   // Kubernetes readiness probe
+        .route("/ready", get(health::health_readiness))          // Short alias for readiness
+        .route("/health/check", get(health::health_check))       // Deep health check
+
         .with_state(state)
 }
 

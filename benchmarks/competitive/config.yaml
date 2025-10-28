@@ -1,0 +1,85 @@
+# Competitive Benchmark Configuration
+
+# Test datasets
+datasets:
+  small:
+    name: "Small (SIFT-like)"
+    num_vectors: 10000
+    dimension: 128
+    query_count: 1000
+    description: "Small dataset similar to SIFT-1M subset"
+
+  medium:
+    name: "Medium (GloVe-like)"
+    num_vectors: 100000
+    dimension: 300
+    query_count: 1000
+    description: "Medium dataset similar to GloVe embeddings"
+
+  large:
+    name: "Large (OpenAI embeddings)"
+    num_vectors: 1000000
+    dimension: 1536
+    query_count: 1000
+    description: "Large dataset with OpenAI embedding dimensions"
+
+  realistic:
+    name: "Realistic Production"
+    num_vectors: 500000
+    dimension: 768
+    query_count: 5000
+    description: "Realistic production workload (BERT embeddings)"
+
+# Benchmark configurations
+benchmarks:
+  insert:
+    batch_sizes: [1, 10, 100, 500, 1000]
+    iterations: 5
+    warmup: 1
+
+  search:
+    top_k_values: [1, 5, 10, 50, 100]
+    iterations: 1000
+    warmup: 100
+    concurrent_queries: [1, 10, 50, 100]
+
+  mixed_workload:
+    read_write_ratio: 0.9  # 90% reads, 10% writes
+    duration_seconds: 300
+    concurrent_clients: 10
+
+# Database configurations
+databases:
+  dvecdb:
+    host: "localhost"
+    port: 8080
+    grpc_port: 9090
+
+  pinecone:
+    # Set PINECONE_API_KEY in .env
+    environment: "us-west1-gcp"
+    index_name: "benchmark-test"
+    metric: "cosine"
+    pod_type: "p1.x1"
+
+  qdrant:
+    host: "localhost"
+    port: 6333
+    grpc_port: 6334
+    collection_name: "benchmark_test"
+
+# Measurement settings
+measurements:
+  latency_percentiles: [50, 90, 95, 99]
+  memory_sampling_interval: 1.0  # seconds
+  warmup_queries: 100
+  min_iterations: 100
+  max_iterations: 10000
+
+# Output settings
+output:
+  results_dir: "./results"
+  format: "json"
+  generate_plots: true
+  generate_html_report: true
+  save_raw_data: true

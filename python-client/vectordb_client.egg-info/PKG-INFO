@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: vectordb-client
-Version: 0.1.1
+Version: 0.1.7
 Summary: Python client library for d-vecDB vector database
 Home-page: https://github.com/your-org/d-vecDB
 Author: d-vecDB Team

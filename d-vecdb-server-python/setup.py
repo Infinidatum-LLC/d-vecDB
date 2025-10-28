@@ -13,7 +13,7 @@ from setuptools.command.develop import develop
 import requests
 
 # Package metadata
-VERSION = "0.1.5"
+VERSION = "0.1.7"
 REPO_URL = "https://github.com/rdmurugan/d-vecDB"
 BINARY_NAME = "vectordb-server"
 
