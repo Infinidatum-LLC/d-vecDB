@@ -16,6 +16,8 @@ resolver = "2"
 # Core async runtime
 tokio = { version = "1.0", features = ["full"] }
 tokio-util = "0.7"
+futures-intrusive = "0.5"
+once_cell = "1.19"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -46,6 +48,12 @@ parking_lot = "0.12"
 nalgebra = "0.32"
 simdeez = { version = "2.0.0-dev5" }
 half = "2.3"
+rayon = "1.8"  # Parallel processing
+
+# GPU acceleration
+wgpu = "0.20"
+pollster = "0.3"  # Sync GPU operations
+bytemuck = { version = "1.14", features = ["derive"] }
 
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }

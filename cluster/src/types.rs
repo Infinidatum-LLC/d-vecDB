@@ -2,6 +2,30 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use uuid::Uuid;
 
+/// Cluster configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterConfig {
+    pub node_id: NodeId,
+    pub initial_role: NodeRole,
+    pub gossip_port: u16,
+    pub heartbeat_interval_ms: u64,
+    pub election_timeout_ms: u64,
+    pub health_check_interval: u64,
+}
+
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self {
+            node_id: NodeId::new(),
+            initial_role: NodeRole::Follower,
+            gossip_port: 7946,
+            heartbeat_interval_ms: 1000,
+            election_timeout_ms: 5000,
+            health_check_interval: 30,
+        }
+    }
+}
+
 /// Unique identifier for a node in the cluster
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub Uuid);

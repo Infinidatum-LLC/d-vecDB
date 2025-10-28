@@ -12,6 +12,15 @@ uuid = { workspace = true }
 tracing = { workspace = true }
 nalgebra = { workspace = true }
 half = { workspace = true }
+simdeez = { workspace = true }
+rayon = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
+bytemuck = { workspace = true }
+parking_lot = { workspace = true }
+futures-intrusive = { workspace = true }
+once_cell = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

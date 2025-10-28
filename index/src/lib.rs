@@ -40,26 +40,39 @@ impl Ord for SearchResult {
 pub trait VectorIndex: Send + Sync {
     /// Insert a vector into the index
     fn insert(&mut self, id: VectorId, vector: &[f32], metadata: Option<std::collections::HashMap<String, serde_json::Value>>) -> Result<()>;
-    
+
+    /// Batch insert vectors (optimized for performance)
+    /// Default implementation falls back to sequential insert
+    fn batch_insert(
+        &mut self,
+        vectors: Vec<(VectorId, Vec<f32>, Option<std::collections::HashMap<String, serde_json::Value>>)>
+    ) -> Result<()> {
+        // Default fallback: sequential insert
+        for (id, vector, metadata) in vectors {
+            self.insert(id, &vector, metadata)?;
+        }
+        Ok(())
+    }
+
     /// Search for nearest neighbors
     fn search(&self, query: &[f32], limit: usize, ef: Option<usize>) -> Result<Vec<SearchResult>>;
-    
+
     /// Delete a vector from the index
     fn delete(&mut self, id: &VectorId) -> Result<bool>;
-    
+
     /// Update a vector in the index
     fn update(&mut self, id: VectorId, vector: &[f32], metadata: Option<std::collections::HashMap<String, serde_json::Value>>) -> Result<()> {
         self.delete(&id)?;
         self.insert(id, vector, metadata)?;
         Ok(())
     }
-    
+
     /// Get index statistics
     fn stats(&self) -> IndexStats;
-    
+
     /// Serialize index to bytes
     fn serialize(&self) -> Result<Vec<u8>>;
-    
+
     /// Deserialize index from bytes
     fn deserialize(&mut self, data: &[u8]) -> Result<()>;
 }

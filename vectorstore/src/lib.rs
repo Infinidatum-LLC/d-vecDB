@@ -140,28 +140,27 @@ impl VectorStore {
         // Insert into storage
         self.storage.batch_insert(collection, vectors).await?;
 
-        // Insert into index - Move expensive HNSW batch insert to blocking thread pool
-        // This is critical for batch operations as they hold the lock even longer
+        // Insert into index - Use optimized batch_insert method
+        // This uses lock-free DashMap and parallel processing for huge speedup!
         let collection_name = collection.to_string();
-        // Clone vector data to move into blocking task
-        let vectors_to_insert: Vec<Vector> = vectors.to_vec();
+        // Prepare vectors for batch insert
+        let vectors_to_insert: Vec<(VectorId, Vec<f32>, Option<_>)> = vectors.iter()
+            .map(|v| (v.id, v.data.clone(), v.metadata.clone()))
+            .collect();
 
         // Clone Arc to move into blocking task
         let indexes = Arc::clone(&self.indexes);
 
         // Spawn blocking task for batch insert
-        // The key optimization here is to minimize lock contention and do all inserts
-        // in a single critical section rather than acquiring/releasing locks per vector
+        // The new batch_insert method is MUCH faster than sequential inserts:
+        // - Phase 1: Parallel node preparation (lock-free)
+        // - Phase 2: Parallel DashMap insertion (lock-free)
+        // - Phase 3: Sequential graph connections (but with DashMap overhead minimized)
         tokio::task::spawn_blocking(move || {
             let mut indexes_guard = indexes.write();
             if let Some(index) = indexes_guard.get_mut(&collection_name) {
-                // Process all vectors in the batch
-                // Note: HNSW inserts are inherently sequential due to graph structure dependencies
-                // Each insert modifies the graph, affecting subsequent inserts
-                // Future optimization: investigate batch HNSW algorithms that can defer graph updates
-                for vector in vectors_to_insert {
-                    index.insert(vector.id, &vector.data, vector.metadata)?;
-                }
+                // Use optimized batch_insert instead of loop
+                index.batch_insert(vectors_to_insert)?;
             }
             Ok::<(), VectorDbError>(())
         })
