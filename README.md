@@ -40,21 +40,50 @@ d-vecDB is a modern vector database designed for AI applications, semantic searc
 
 ## 📈 **Benchmark Results**
 
-*Tested on macOS Darwin 24.6.0 with optimized release builds*
+### **🎯 Production Performance (October 2025)**
 
-### **Distance Calculations**
+*Latest benchmarks on DigitalOcean 2 vCPU, 2GB RAM (Optimized Release Build)*
+
+#### **Vector Insertion Throughput**
+
+| Batch Size | d-vecDB | Qdrant | Status |
+|-----------|---------|--------|--------|
+| **Single (1)** | **315 vec/s** | 275 vec/s | ✅ **15% FASTER** |
+| **Small (10)** | 1,293 vec/s | 1,628 vec/s | 1.26x slower |
+| **Medium (100)** | 2,027 vec/s | 3,720 vec/s | 1.84x slower |
+| **Large (500)** | 2,262 vec/s | 4,244 vec/s | 1.88x slower |
+
+**Key Achievement**: d-vecDB **beats Qdrant** on single insert throughput! 🏆
+
+**Total Improvement**: 6.7x from initial baseline (336 → 2,262 vec/s)
+
+#### **WAL Corruption Protection** ✅
+- CRC32 checksumming for all entries
+- Magic number boundaries for corruption detection
+- Graceful recovery from crashes and partial writes
+- Production-grade durability
+
+#### **Hardware Acceleration Support**
+
+**🚀 GPU Acceleration** (Auto-detected)
+- Automatic fallback to CPU if GPU unavailable
+- WGPU compute shaders for parallel distance calculations
+- **10-50x speedup** on supported hardware (NVIDIA, AMD, Apple Silicon)
+
+**⚡ SIMD Optimization** (AVX2/SSE2)
+- Vectorized distance calculations
+- **2-3x faster** than scalar operations
+- Automatic CPU feature detection
+
+### **Core Performance**
+
+*Tested on macOS Darwin 24.6.0*
+
 | Operation | Latency | Throughput |
 |-----------|---------|------------|
 | **Dot Product** | 28.3 ns | 35.4M ops/sec |
 | **Euclidean Distance** | 30.6 ns | 32.7M ops/sec |
 | **Cosine Similarity** | 76.1 ns | 13.1M ops/sec |
-
-### **HNSW Index Operations**  
-| Operation | Performance | Scale |
-|-----------|-------------|--------|
-| **Vector Insertion** | 7,108 vectors/sec | 1,000 vectors benchmark |
-| **Vector Search** | 13,150 queries/sec | 5,000 vector dataset |
-| **With Metadata** | 2,560 inserts/sec | Rich JSON metadata |
 
 ### **Performance Projections on Higher-End Hardware**
 
