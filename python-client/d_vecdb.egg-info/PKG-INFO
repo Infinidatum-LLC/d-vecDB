@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: d-vecdb
-Version: 0.2.0
+Version: 0.2.1
 Summary: High-performance Python client for d-vecDB vector database with WAL corruption protection and GPU acceleration support
 Home-page: https://github.com/rdmurugan/d-vecDB
 Author: d-vecDB Team
@@ -68,9 +68,14 @@ Dynamic: summary
 
 # d-vecDB Python Client
 
+[![PyPI version](https://img.shields.io/pypi/v/d-vecdb.svg)](https://pypi.org/project/d-vecdb/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: Enterprise](https://img.shields.io/badge/License-Enterprise-red.svg)](../LICENSE)
+[![Downloads](https://pepy.tech/badge/d-vecdb)](https://pepy.tech/project/d-vecdb)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](https://github.com/rdmurugan/d-vecDB/blob/master/LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Typing: typed](https://img.shields.io/badge/typing-typed-blue.svg)](https://peps.python.org/pep-0561/)
+
+**High-performance Python client for d-vecDB vector database** - Production-ready with WAL corruption protection, GPU acceleration, and SIMD optimization.
 
 A comprehensive Python client library for [d-vecDB](https://github.com/rdmurugan/d-vecDB), providing both synchronous and asynchronous interfaces for vector database operations.
 
@@ -128,10 +133,10 @@ A comprehensive Python client library for [d-vecDB](https://github.com/rdmurugan
 
 ## 📦 **Installation**
 
-### **Recommended: Install d-vecDB Python Client**
+### **Quick Install from PyPI (Recommended)**
 
 ```bash
-# Install d-vecDB Python client
+# Install the Python client
 pip install d-vecdb
 
 # Install with development dependencies
@@ -139,6 +144,32 @@ pip install d-vecdb[dev]
 
 # Install with example dependencies
 pip install d-vecdb[examples]
+```
+
+### **Install the Complete Server + Client**
+
+For a complete zero-config setup with embedded server binaries:
+
+```bash
+# Install the server package (includes binaries for Linux, macOS, Windows)
+pip install d-vecdb-server
+
+# This automatically includes the d-vecdb client as a dependency
+```
+
+The `d-vecdb-server` package includes:
+- ✅ Pre-built server binaries for all major platforms
+- ✅ Zero configuration required
+- ✅ Automatic platform detection
+- ✅ Python client included
+
+**Start the server:**
+```bash
+# Using command-line
+d-vecdb-server
+
+# Or via Python
+python -m d_vecdb_server
 ```
 
 ### **From Source**
@@ -149,11 +180,24 @@ cd d-vecDB/python-client
 pip install -e .
 ```
 
-## 🚀 **Getting Started After Installation**
+## 🚀 **Getting Started**
 
-### **Step 1: Build and Start the d-vecDB Server**
+### **Option 1: Using the Complete Server Package (Easiest)**
 
-**Important**: The PyPI package (`pip install d-vecdb`) only includes the Python client library. You need to build the server separately:
+```bash
+# Install everything
+pip install d-vecdb-server
+
+# Start the server (runs in foreground)
+d-vecdb-server --host 0.0.0.0 --port 8080
+
+# Or start in Python
+python -c "from d_vecdb_server import start_server; start_server()"
+```
+
+### **Option 2: Install Client Only + Build Server from Source**
+
+**Step 1: Build and Start the d-vecDB Server**
 
 ```bash
 # Clone the repository and build the server
@@ -164,12 +208,19 @@ cd d-vecDB
 cargo build --release
 
 # Start the server
-./target/release/vectordb-server --config config.toml
+./target/release/vectordb-server --host 0.0.0.0 --port 8080
 ```
 
-### **Step 2: Use the Python Client**
+**Step 2: Install and Use the Python Client**
 
-Once you have a running d-vecDB server, you can use the Python client (installed via pip) to interact with it:
+```bash
+# Install the client
+pip install d-vecdb
+```
+
+### **Using the Python Client**
+
+Once you have a running d-vecDB server, connect and start working with vectors:
 
 ```python
 import numpy as np
@@ -703,17 +754,43 @@ We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md
 
 ## 📄 **License**
 
-This project is licensed under the d-vecDB Enterprise License - see the [LICENSE](../LICENSE) file for details.
+This project is licensed under the d-vecDB Enterprise License - see the [LICENSE](https://github.com/rdmurugan/d-vecDB/blob/master/LICENSE) file for details.
 
 **For Enterprise Use**: Commercial usage requires a separate enterprise license. Contact durai@infinidatum.com for licensing terms.
 
+## 🔗 **Links**
+
+- **PyPI Package (Client)**: https://pypi.org/project/d-vecdb/
+- **PyPI Package (Server)**: https://pypi.org/project/d-vecdb-server/
+- **GitHub Repository**: https://github.com/rdmurugan/d-vecDB
+- **Documentation**: https://github.com/rdmurugan/d-vecDB#readme
+- **Binary Releases**: https://github.com/rdmurugan/d-vecDB/releases
+
 ## 🆘 **Support**
 
-- **Documentation**: [docs.d-vecdb.com](https://docs.d-vecdb.com)
-- **Issues**: [GitHub Issues](https://github.com/rdmurugan/d-vecDB/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/rdmurugan/d-vecDB/discussions)
-- **Discord**: [d-vecDB Community](https://discord.gg/d-vecdb)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/rdmurugan/d-vecDB/issues)
+- **GitHub Discussions**: [Community support and Q&A](https://github.com/rdmurugan/d-vecDB/discussions)
+- **Email**: durai@infinidatum.com
+- **Commercial Support**: Available for enterprise customers
+
+## 🤝 **Related Packages**
+
+- **[d-vecdb-server](https://pypi.org/project/d-vecdb-server/)** - Complete server package with embedded binaries (recommended for quick start)
+- **[d-vecdb](https://pypi.org/project/d-vecdb/)** - Python client library (this package)
+
+## 📈 **Version History**
+
+See [CHANGELOG](https://github.com/rdmurugan/d-vecDB/releases) for version history and release notes.
+
+**Current Version**: 0.2.0
+- ✅ Published on PyPI
+- ✅ Full type safety (py.typed marker)
+- ✅ Production-ready with WAL protection
+- ✅ GPU acceleration support
+- ✅ Comprehensive documentation
 
 ---
 
 **Built with ❤️ by the d-vecDB team**
+
+*Star us on [GitHub](https://github.com/rdmurugan/d-vecDB) ⭐*

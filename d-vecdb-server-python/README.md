@@ -1,10 +1,25 @@
 # d-vecDB Server Python Package
 
-[![PyPI version](https://badge.fury.io/py/d-vecdb-server.svg)](https://badge.fury.io/py/d-vecdb-server)
+[![PyPI version](https://img.shields.io/pypi/v/d-vecdb-server.svg)](https://pypi.org/project/d-vecdb-server/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Downloads](https://pepy.tech/badge/d-vecdb-server)](https://pepy.tech/project/d-vecdb-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)](https://pypi.org/project/d-vecdb-server/)
 
-A Python package that provides the d-vecDB server with embedded pre-built binaries. This package allows you to run the high-performance d-vecDB vector database server directly from Python with a single `pip install` command.
+**Zero-configuration vector database server with embedded binaries** - Production-ready with WAL corruption protection, GPU acceleration (10-50x speedup), and SIMD optimization (2-3x speedup).
+
+A complete Python package that provides the d-vecDB server with embedded pre-built binaries for all major platforms. Run a high-performance vector database server directly from Python with a single `pip install` command - no Rust compiler needed!
+
+## 🚀 **Key Features**
+
+✅ **Zero Configuration** - Pre-built binaries included for Linux, macOS (Intel/ARM), Windows
+✅ **One-Line Install** - `pip install d-vecdb-server` and you're ready to go
+✅ **Production Ready** - WAL corruption protection with CRC32 checksumming
+✅ **Hardware Accelerated** - GPU support (10-50x speedup) with automatic CPU fallback
+✅ **SIMD Optimized** - AVX2/SSE2 for 2-3x faster distance calculations
+✅ **Auto Platform Detection** - Automatically uses the correct binary for your OS
+✅ **Python Integration** - Start/stop server from Python code or command line
+✅ **Complete Package** - Includes d-vecdb Python client as a dependency
 
 ## Prerequisites
 
@@ -334,11 +349,49 @@ Start Options:
   --daemon              Run in background
 ```
 
+## 📊 **Performance**
+
+### **Production Benchmarks (October 2025)**
+
+*Tested on DigitalOcean 2 vCPU, 2GB RAM*
+
+| Batch Size | d-vecDB | Qdrant | Status |
+|-----------|---------|--------|--------|
+| **Single (1)** | **315 vec/s** | 275 vec/s | ✅ **15% FASTER** |
+| **Small (10)** | 1,293 vec/s | 1,628 vec/s | 1.26x slower |
+| **Medium (100)** | 2,027 vec/s | 3,720 vec/s | 1.84x slower |
+| **Large (500)** | 2,262 vec/s | 4,244 vec/s | 1.88x slower |
+
+**Key Achievement**: d-vecDB beats Qdrant on single insert throughput! 🏆
+
+### **Performance Features**
+
+- **Distance Calculations**: 35M+ operations/second
+- **Vector Search**: 13K+ queries/second
+- **Sub-microsecond latency** for vector operations
+- **6.7x total improvement** from baseline (CPU SIMD + GPU + Lock-Free HNSW)
+
+### **Hardware Acceleration**
+
+- **GPU Acceleration**: 10-50x speedup with CUDA/Metal/Vulkan
+- **SIMD Optimization**: 2-3x speedup with AVX2/SSE2
+- **Automatic Detection**: Falls back to CPU if GPU unavailable
+- **Lock-Free HNSW**: Optimized index for concurrent operations
+
+### **Production Features**
+
+- **WAL Corruption Protection**: CRC32 checksumming for all entries
+- **Magic Number Boundaries**: Detect corruption and partial writes
+- **Graceful Recovery**: Automatic crash recovery
+- **Production Durability**: Enterprise-grade data protection
+
 ## Platform Support
 
 - **Linux**: x86_64 (with musl for better compatibility)
 - **macOS**: Intel (x86_64) and Apple Silicon (ARM64)
 - **Windows**: x86_64
+
+All platform binaries include full feature support (GPU, SIMD, WAL protection).
 
 ## Advanced Setup
 
@@ -542,10 +595,41 @@ After installation and configuration:
 3. **Check examples**: See the main repository for usage examples
 4. **Join community**: Report issues and get support
 
-## Links
+## 🔗 **Links**
 
-- **Main Repository**: https://github.com/rdmurugan/d-vecDB
-- **Python Client**: https://pypi.org/project/d-vecdb/
+- **PyPI Package (Server)**: https://pypi.org/project/d-vecdb-server/
+- **PyPI Package (Client)**: https://pypi.org/project/d-vecdb/
+- **GitHub Repository**: https://github.com/rdmurugan/d-vecDB
+- **Binary Releases**: https://github.com/rdmurugan/d-vecDB/releases
 - **Docker Hub**: https://hub.docker.com/r/rdmurugan/d-vecdb
-- **Issues & Support**: https://github.com/rdmurugan/d-vecDB/issues
 - **Documentation**: https://github.com/rdmurugan/d-vecDB#readme
+
+## 🆘 **Support**
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/rdmurugan/d-vecDB/issues)
+- **GitHub Discussions**: [Community support and Q&A](https://github.com/rdmurugan/d-vecDB/discussions)
+- **Email**: durai@infinidatum.com
+- **Commercial Support**: Available for enterprise customers
+
+## 🤝 **Related Packages**
+
+- **[d-vecdb-server](https://pypi.org/project/d-vecdb-server/)** - Complete server package with embedded binaries (this package)
+- **[d-vecdb](https://pypi.org/project/d-vecdb/)** - Python client library (included as dependency)
+
+## 📈 **Version History**
+
+See [CHANGELOG](https://github.com/rdmurugan/d-vecDB/releases) for version history and release notes.
+
+**Current Version**: 0.1.7
+- ✅ Published on PyPI
+- ✅ Pre-built binaries for all platforms
+- ✅ Zero configuration required
+- ✅ Production-ready with WAL protection
+- ✅ GPU acceleration and SIMD optimization
+- ✅ Comprehensive documentation
+
+---
+
+**Built with ❤️ by the d-vecDB team**
+
+*Star us on [GitHub](https://github.com/rdmurugan/d-vecDB) ⭐*
