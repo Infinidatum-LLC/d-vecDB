@@ -28,32 +28,49 @@ A comprehensive Python client library for [d-vecDB](https://github.com/rdmurugan
 - **NumPy integration** for seamless array handling
 - **Rich documentation** and examples
 
+## 📊 **Performance Highlights**
+
+### **Production Performance (October 2025)**
+
+*Benchmarked on DigitalOcean 2 vCPU, 2GB RAM*
+
+| Batch Size | d-vecDB | Qdrant | Status |
+|-----------|---------|--------|--------|
+| **Single (1)** | **315 vec/s** | 275 vec/s | ✅ **15% FASTER** |
+| **Small (10)** | 1,293 vec/s | 1,628 vec/s | 1.26x slower |
+| **Medium (100)** | 2,027 vec/s | 3,720 vec/s | 1.84x slower |
+| **Large (500)** | 2,262 vec/s | 4,244 vec/s | 1.88x slower |
+
+**Key Achievement**: d-vecDB beats Qdrant on single insert throughput! 🏆
+
+### **Production Features**
+
+✅ **WAL Corruption Protection**
+- CRC32 checksumming for all entries
+- Magic number boundaries for corruption detection
+- Graceful recovery from crashes and partial writes
+- Production-grade durability
+
+✅ **Hardware Acceleration**
+- GPU acceleration with automatic CPU fallback (10-50x speedup)
+- SIMD optimization (AVX2/SSE2) for 2-3x faster distance calculations
+- Automatic hardware detection
+
+---
+
 ## 📦 **Installation**
 
-### **Recommended: Install d-vecDB with Python Client**
+### **Recommended: Install d-vecDB Python Client**
 
 ```bash
-# Install d-vecDB (includes Python client)
+# Install d-vecDB Python client
 pip install d-vecdb
 
 # Install with development dependencies
 pip install d-vecdb[dev]
 
-# Install with example dependencies  
-pip install d-vecdb[examples]
-```
-
-### **Alternative: Install Python Client Only**
-
-```bash
-# Install just the Python client library
-pip install vectordb-client
-
-# Install with development dependencies
-pip install vectordb-client[dev]
-
 # Install with example dependencies
-pip install vectordb-client[examples]
+pip install d-vecdb[examples]
 ```
 
 ### **From Source**

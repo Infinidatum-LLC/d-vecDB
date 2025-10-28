@@ -29,7 +29,7 @@ from .exceptions import (
     ServerError,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __author__ = "d-vecDB Team"
 __email__ = "durai@infinidatum.com"
 

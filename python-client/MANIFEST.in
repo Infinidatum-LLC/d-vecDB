@@ -1,0 +1,22 @@
+# Include metadata files
+include README.md
+include LICENSE
+include requirements.txt
+include pytest.ini
+
+# Include type marker
+include vectordb_client/py.typed
+
+# Include examples
+recursive-include vectordb_client/examples *.py
+
+# Exclude development and build artifacts
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude *.so
+global-exclude .DS_Store
+prune build
+prune dist
+prune *.egg-info
+prune tests

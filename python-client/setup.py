@@ -24,20 +24,20 @@ def read_requirements():
     return []
 
 setup(
-    name="vectordb-client",
-    version="0.1.7",
+    name="d-vecdb",
+    version="0.2.0",
     author="d-vecDB Team",
     author_email="durai@infinidatum.com",
-    description="Python client library for d-vecDB vector database",
+    description="High-performance Python client for d-vecDB vector database with WAL corruption protection and GPU acceleration support",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/your-org/d-vecDB",
+    url="https://github.com/rdmurugan/d-vecDB",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
-        "License :: OSI Approved :: MIT License",
+        "License :: Other/Proprietary License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
@@ -46,8 +46,10 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Topic :: Database",
+        "Topic :: Database :: Database Engines/Servers",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Software Development :: Libraries :: Python Modules",
+        "Typing :: Typed",
     ],
     python_requires=">=3.8",
     install_requires=[
@@ -84,15 +86,19 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "vectordb-cli=vectordb_client.cli:main",
+            "d-vecdb-cli=vectordb_client.cli:main",
         ],
     },
     project_urls={
-        "Bug Reports": "https://github.com/your-org/d-vecDB/issues",
-        "Source": "https://github.com/your-org/d-vecDB",
-        "Documentation": "https://docs.d-vecdb.com",
+        "Bug Reports": "https://github.com/rdmurugan/d-vecDB/issues",
+        "Source": "https://github.com/rdmurugan/d-vecDB",
+        "Documentation": "https://github.com/rdmurugan/d-vecDB/blob/master/README.md",
+        "Changelog": "https://github.com/rdmurugan/d-vecDB/releases",
     },
-    keywords="vector database, similarity search, machine learning, embeddings, HNSW",
+    keywords="vector database, similarity search, machine learning, embeddings, HNSW, semantic search, AI, GPU acceleration, high-performance",
     include_package_data=True,
+    package_data={
+        "vectordb_client": ["py.typed"],
+    },
     zip_safe=False,
 )
