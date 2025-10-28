@@ -1,7 +1,7 @@
 {
   "name": "d-vecdb",
-  "version": "0.1.7",
-  "description": "TypeScript/JavaScript client for d-vecDB - A high-performance vector database",
+  "version": "0.2.0",
+  "description": "TypeScript/JavaScript client for d-vecDB - High-performance vector database with WAL corruption protection and GPU acceleration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -21,20 +21,25 @@
     "machine-learning",
     "ai",
     "hnsw",
+    "semantic-search",
+    "gpu-acceleration",
+    "high-performance",
     "typescript",
-    "javascript"
+    "javascript",
+    "wal",
+    "rust"
   ],
-  "author": "d-vecDB Contributors",
-  "license": "MIT",
+  "author": "d-vecDB Team <durai@infinidatum.com>",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/d-vecDB.git",
+    "url": "https://github.com/rdmurugan/d-vecDB.git",
     "directory": "typescript-client"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/d-vecDB/issues"
+    "url": "https://github.com/rdmurugan/d-vecDB/issues"
   },
-  "homepage": "https://github.com/yourusername/d-vecDB#readme",
+  "homepage": "https://github.com/rdmurugan/d-vecDB#readme",
   "files": [
     "dist",
     "README.md",

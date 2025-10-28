@@ -1,20 +1,51 @@
 # d-vecDB TypeScript/JavaScript Client
 
-A high-performance TypeScript/JavaScript client for [d-vecDB](https://github.com/yourusername/d-vecDB), a blazingly fast vector database written in Rust.
+A high-performance TypeScript/JavaScript client for [d-vecDB](https://github.com/rdmurugan/d-vecDB), a blazingly fast vector database written in Rust with WAL corruption protection and GPU acceleration.
 
 [![npm version](https://badge.fury.io/js/d-vecdb.svg)](https://www.npmjs.com/package/d-vecdb)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Enterprise-red.svg)](../LICENSE)
+
+## 📊 **Performance Highlights**
+
+### **Production Performance (October 2025)**
+
+*Benchmarked on DigitalOcean 2 vCPU, 2GB RAM*
+
+| Batch Size | d-vecDB | Qdrant | Status |
+|-----------|---------|--------|--------|
+| **Single (1)** | **315 vec/s** | 275 vec/s | ✅ **15% FASTER** |
+| **Small (10)** | 1,293 vec/s | 1,628 vec/s | 1.26x slower |
+| **Medium (100)** | 2,027 vec/s | 3,720 vec/s | 1.84x slower |
+| **Large (500)** | 2,262 vec/s | 4,244 vec/s | 1.88x slower |
+
+**Key Achievement**: d-vecDB beats Qdrant on single insert throughput! 🏆
+
+### **Production Features**
+
+✅ **WAL Corruption Protection**
+- CRC32 checksumming for all entries
+- Magic number boundaries for corruption detection
+- Graceful recovery from crashes and partial writes
+- Production-grade durability
+
+✅ **Hardware Acceleration**
+- GPU acceleration with automatic CPU fallback (10-50x speedup)
+- SIMD optimization (AVX2/SSE2) for 2-3x faster distance calculations
+- Automatic hardware detection
+
+---
 
 ## Features
 
 - 🚀 **High Performance**: Built on top of Rust-powered d-vecDB server
 - 🎯 **Type-Safe**: Full TypeScript support with comprehensive type definitions
 - 🔄 **Promise-Based**: Modern async/await API
-- 📦 **Zero Dependencies**: Only axios for HTTP requests
+- 📦 **Minimal Dependencies**: Only axios for HTTP requests
 - 🛡️ **Error Handling**: Comprehensive custom exceptions
 - 📊 **HNSW Indexing**: Hierarchical Navigable Small World algorithm for fast similarity search
 - 🎨 **Simple & Advanced APIs**: Both simple and full-featured methods
 - 📝 **Well Documented**: Extensive examples and API documentation
+- 🔐 **Production Ready**: WAL corruption protection and crash recovery
 
 ## Installation
 
