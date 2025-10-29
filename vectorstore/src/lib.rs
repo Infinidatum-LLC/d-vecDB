@@ -50,16 +50,91 @@ impl VectorStore {
         Ok(())
     }
     
-    /// Delete a collection
+    /// Delete a collection with soft-delete (recoverable for 24 hours)
     pub async fn delete_collection(&self, name: &str) -> Result<()> {
-        info!("Deleting collection: {}", name);
+        info!("Soft-deleting collection: {}", name);
         counter!("vectorstore.collections.deleted").increment(1);
-        
+
+        // Use soft delete via recovery manager
+        let recovery = self.storage.get_recovery_manager();
+        recovery.soft_delete_collection(name).await?;
+        self.indexes.remove(name);
+
+        info!("Collection soft-deleted successfully: {} (recoverable for 24 hours)", name);
+        Ok(())
+    }
+
+    /// Hard delete a collection (permanent, no recovery)
+    pub async fn hard_delete_collection(&self, name: &str) -> Result<()> {
+        info!("Permanently deleting collection: {}", name);
+        counter!("vectorstore.collections.hard_deleted").increment(1);
+
         self.storage.delete_collection(name).await?;
         self.indexes.remove(name);
-        
-        info!("Collection deleted successfully: {}", name);
+
+        info!("Collection permanently deleted: {}", name);
         Ok(())
+    }
+
+    /// Restore a soft-deleted or backed-up collection
+    pub async fn restore_collection(&self, backup_path: &std::path::Path, collection_name: Option<&str>) -> Result<String> {
+        info!("Restoring collection from: {}", backup_path.display());
+
+        let recovery = self.storage.get_recovery_manager();
+        let name = recovery.restore_collection(backup_path, collection_name).await?;
+
+        // Rebuild index for restored collection
+        if let Some(config) = self.storage.get_collection_config(&name)? {
+            let index = Box::new(HnswRsIndex::new(
+                config.index_config.clone(),
+                config.distance_metric,
+                config.dimension,
+            ));
+            self.indexes.insert(name.clone(), index);
+        }
+
+        info!("Collection restored successfully: {}", name);
+        Ok(name)
+    }
+
+    /// Import orphaned collection data (vectors.bin/index.bin files)
+    pub async fn import_orphaned_collection(&self, orphaned_dir: &std::path::Path, new_collection_name: &str, config: &CollectionConfig) -> Result<()> {
+        info!("Importing orphaned collection from: {}", orphaned_dir.display());
+
+        let recovery = self.storage.get_recovery_manager();
+        recovery.import_orphaned_collection(orphaned_dir, new_collection_name).await?;
+
+        // Register the collection with storage engine
+        self.storage.register_imported_collection(config).await?;
+
+        // Create index for imported collection
+        let index = Box::new(HnswRsIndex::new(
+            config.index_config.clone(),
+            config.distance_metric,
+            config.dimension,
+        ));
+        self.indexes.insert(config.name.clone(), index);
+
+        info!("Orphaned collection imported successfully as: {}", new_collection_name);
+        Ok(())
+    }
+
+    /// List all soft-deleted collections
+    pub async fn list_deleted_collections(&self) -> Result<Vec<(String, std::path::PathBuf, u64)>> {
+        let recovery = self.storage.get_recovery_manager();
+        recovery.list_deleted_collections().await
+    }
+
+    /// Cleanup old soft-deleted collections (older than retention_hours)
+    pub async fn cleanup_old_deleted(&self, retention_hours: u64) -> Result<Vec<String>> {
+        let recovery = self.storage.get_recovery_manager();
+        recovery.cleanup_old_deleted(retention_hours).await
+    }
+
+    /// Create backup of a specific collection
+    pub async fn backup_collection(&self, collection_name: &str) -> Result<std::path::PathBuf> {
+        let recovery = self.storage.get_recovery_manager();
+        recovery.backup_collection(collection_name).await
     }
     
     /// Insert a vector into a collection

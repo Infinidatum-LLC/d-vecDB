@@ -217,20 +217,52 @@ impl StorageEngine {
     
     pub async fn sync(&self) -> Result<()> {
         self.wal.sync().await?;
-        
+
         // Clone all storage references to avoid holding the lock across await points
         let storages: Vec<Arc<CollectionStorage>> = {
             let collections = self.collections.read();
             collections.values().cloned().collect()
         };
-        
+
         for storage in storages {
             storage.sync().await?;
         }
-        
+
         Ok(())
     }
-    
+
+    /// Get recovery manager for backup/restore operations
+    pub fn get_recovery_manager(&self) -> RecoveryManager {
+        RecoveryManager::new(&self.data_dir)
+    }
+
+    /// Register an imported collection with the storage engine
+    pub async fn register_imported_collection(&self, config: &CollectionConfig) -> Result<()> {
+        // Check if collection already exists
+        {
+            let collections = self.collections.read();
+            if collections.contains_key(&config.name) {
+                return Err(VectorDbError::CollectionAlreadyExists {
+                    name: config.name.clone(),
+                });
+            }
+        }
+
+        // Create storage for the imported collection
+        let collection_dir = self.data_dir.join(&config.name);
+        let storage = Arc::new(CollectionStorage::new(collection_dir, config.clone()).await?);
+
+        // Log the operation to WAL
+        let op = WALOperation::CreateCollection(config.clone());
+        self.wal.append(&op).await?;
+
+        // Register with collections
+        self.collections.write().insert(config.name.clone(), storage);
+
+        tracing::info!("Registered imported collection: {}", config.name);
+        Ok(())
+    }
+
     async fn recover(&mut self) -> Result<()> {
         let recovery = RecoveryManager::new(&self.data_dir);
         let operations = recovery.recover_from_wal(&self.wal).await?;

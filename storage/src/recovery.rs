@@ -203,24 +203,215 @@ impl RecoveryManager {
     /// Create backup of data directory
     pub async fn create_backup<P: AsRef<Path>>(&self, backup_path: P) -> Result<()> {
         let backup_path = backup_path.as_ref();
-        
+
         info!("Creating backup at: {}", backup_path.display());
-        
+
         // Create backup directory
         fs::create_dir_all(backup_path).await?;
-        
+
         // Copy all collection directories
         let collections = self.discover_existing_collections().await?;
-        
+
         for collection in &collections {
             let src_dir = self.data_dir.join(collection);
             let dst_dir = backup_path.join(collection);
-            
+
             self.copy_dir_recursive(&src_dir, &dst_dir).await?;
         }
-        
+
         info!("Backup completed successfully");
         Ok(())
+    }
+
+    /// Backup a single collection before destructive operation
+    pub async fn backup_collection(&self, collection_name: &str) -> Result<PathBuf> {
+        use chrono::Local;
+
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let backup_dir = self.data_dir.join(".backups").join(format!("{}_{}", collection_name, timestamp));
+
+        info!("Creating pre-operation backup for collection '{}' at: {}", collection_name, backup_dir.display());
+
+        let src_dir = self.data_dir.join(collection_name);
+        if !src_dir.exists() {
+            return Err(VectorDbError::CollectionNotFound {
+                name: collection_name.to_string(),
+            });
+        }
+
+        // Create backup directory
+        fs::create_dir_all(&backup_dir).await?;
+
+        // Copy collection directory
+        self.copy_dir_recursive(&src_dir, &backup_dir).await?;
+
+        info!("Pre-operation backup completed: {}", backup_dir.display());
+        Ok(backup_dir)
+    }
+
+    /// Soft delete a collection (move to .deleted with timestamp)
+    pub async fn soft_delete_collection(&self, collection_name: &str) -> Result<PathBuf> {
+        use chrono::Local;
+
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let deleted_dir = self.data_dir.join(".deleted").join(format!("{}_{}", collection_name, timestamp));
+
+        info!("Soft deleting collection '{}' to: {}", collection_name, deleted_dir.display());
+
+        let src_dir = self.data_dir.join(collection_name);
+        if !src_dir.exists() {
+            return Err(VectorDbError::CollectionNotFound {
+                name: collection_name.to_string(),
+            });
+        }
+
+        // Create .deleted directory
+        fs::create_dir_all(self.data_dir.join(".deleted")).await?;
+
+        // Move collection directory to .deleted
+        fs::rename(&src_dir, &deleted_dir).await?;
+
+        info!("Collection soft deleted successfully. Recoverable for 24 hours at: {}", deleted_dir.display());
+        Ok(deleted_dir)
+    }
+
+    /// Restore a soft-deleted collection
+    pub async fn restore_collection(&self, deleted_path: &Path, collection_name: Option<&str>) -> Result<String> {
+        if !deleted_path.exists() {
+            return Err(VectorDbError::Internal {
+                message: format!("Backup/deleted directory not found: {}", deleted_path.display()),
+            });
+        }
+
+        // Extract collection name from path if not provided
+        let name = if let Some(n) = collection_name {
+            n.to_string()
+        } else {
+            // Extract from path like "incidents_20251029_074542"
+            deleted_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|s| s.split('_').next())
+                .ok_or_else(|| VectorDbError::Internal {
+                    message: "Cannot determine collection name from path".to_string(),
+                })?
+                .to_string()
+        };
+
+        let restore_dir = self.data_dir.join(&name);
+
+        // Check if collection already exists
+        if restore_dir.exists() {
+            return Err(VectorDbError::Internal {
+                message: format!("Collection '{}' already exists. Delete it first or use a different name.", name),
+            });
+        }
+
+        info!("Restoring collection '{}' from: {}", name, deleted_path.display());
+
+        // Copy from backup/deleted to active collection
+        self.copy_dir_recursive(deleted_path, &restore_dir).await?;
+
+        info!("Collection '{}' restored successfully", name);
+        Ok(name)
+    }
+
+    /// Import orphaned collection data (vectors.bin/index.bin files)
+    pub async fn import_orphaned_collection(&self, orphaned_dir: &Path, new_collection_name: &str) -> Result<()> {
+        info!("Importing orphaned collection from: {} as '{}'", orphaned_dir.display(), new_collection_name);
+
+        // Validate orphaned directory has required files
+        let vectors_file = orphaned_dir.join("vectors.bin");
+        let index_file = orphaned_dir.join("index.bin");
+
+        if !vectors_file.exists() && !index_file.exists() {
+            return Err(VectorDbError::Internal {
+                message: format!("No vectors.bin or index.bin found in {}", orphaned_dir.display()),
+            });
+        }
+
+        let restore_dir = self.data_dir.join(new_collection_name);
+
+        // Check if collection already exists
+        if restore_dir.exists() {
+            return Err(VectorDbError::Internal {
+                message: format!("Collection '{}' already exists. Use a different name or delete existing collection.", new_collection_name),
+            });
+        }
+
+        // Copy orphaned data to new collection directory
+        fs::create_dir_all(&restore_dir).await?;
+
+        if vectors_file.exists() {
+            let dst_vectors = restore_dir.join("vectors.bin");
+            fs::copy(&vectors_file, &dst_vectors).await?;
+            let size_mb = fs::metadata(&vectors_file).await?.len() as f64 / 1_048_576.0;
+            info!("Copied vectors.bin ({:.2} MB)", size_mb);
+        }
+
+        if index_file.exists() {
+            let dst_index = restore_dir.join("index.bin");
+            fs::copy(&index_file, &dst_index).await?;
+            let size_mb = fs::metadata(&index_file).await?.len() as f64 / 1_048_576.0;
+            info!("Copied index.bin ({:.2} MB)", size_mb);
+        }
+
+        info!("Orphaned collection imported successfully as '{}'", new_collection_name);
+        Ok(())
+    }
+
+    /// List all soft-deleted collections
+    pub async fn list_deleted_collections(&self) -> Result<Vec<(String, PathBuf, u64)>> {
+        let deleted_dir = self.data_dir.join(".deleted");
+
+        if !deleted_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut deleted = Vec::new();
+        let mut entries = fs::read_dir(&deleted_dir).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    let metadata = fs::metadata(&path).await?;
+                    let modified = metadata.modified()?
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
+                    deleted.push((name.to_string(), path, modified));
+                }
+            }
+        }
+
+        Ok(deleted)
+    }
+
+    /// Cleanup old soft-deleted collections (older than 24 hours)
+    pub async fn cleanup_old_deleted(&self, retention_hours: u64) -> Result<Vec<String>> {
+        let deleted = self.list_deleted_collections().await?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let retention_seconds = retention_hours * 3600;
+        let mut cleaned = Vec::new();
+
+        for (name, path, modified) in deleted {
+            let age_seconds = now.saturating_sub(modified);
+
+            if age_seconds > retention_seconds {
+                info!("Cleaning up old deleted collection: {} (age: {:.1} hours)", name, age_seconds as f64 / 3600.0);
+                fs::remove_dir_all(&path).await?;
+                cleaned.push(name);
+            }
+        }
+
+        info!("Cleaned up {} old deleted collections", cleaned.len());
+        Ok(cleaned)
     }
     
     /// Recursively copy directory

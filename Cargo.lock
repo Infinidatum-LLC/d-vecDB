@@ -3898,6 +3898,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "chrono",
  "crc32fast",
  "memmap2",
  "parking_lot",

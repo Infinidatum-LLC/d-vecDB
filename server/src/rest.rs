@@ -372,6 +372,179 @@ async fn health() -> Result<Json<ApiResponse<String>>, StatusCode> {
     Ok(Json(ApiResponse::success("OK".to_string())))
 }
 
+// === RECOVERY ENDPOINTS ===
+
+#[derive(Serialize, Debug)]
+struct BackupResponse {
+    collection: String,
+    backup_path: String,
+    message: String,
+}
+
+#[derive(Serialize, Debug)]
+struct DeletedCollectionInfo {
+    name: String,
+    path: String,
+    deleted_timestamp: u64,
+    age_hours: f64,
+}
+
+#[derive(Deserialize, Debug)]
+struct RestoreRequest {
+    backup_path: String,
+    new_name: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ImportRequest {
+    orphaned_path: String,
+    collection_name: String,
+    dimension: usize,
+    distance_metric: DistanceMetric,
+    vector_type: VectorType,
+}
+
+#[derive(Deserialize, Debug)]
+struct CleanupRequest {
+    retention_hours: Option<u64>,
+}
+
+/// Create backup of a collection
+#[instrument(skip(state))]
+async fn backup_collection(
+    State(state): State<AppState>,
+    Path(collection_name): Path<String>,
+) -> Result<Json<ApiResponse<BackupResponse>>, StatusCode> {
+    match state.backup_collection(&collection_name).await {
+        Ok(backup_path) => Ok(Json(ApiResponse::success(BackupResponse {
+            collection: collection_name,
+            backup_path: backup_path.display().to_string(),
+            message: "Backup created successfully".to_string(),
+        }))),
+        Err(e) => {
+            error!("Failed to backup collection: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// List soft-deleted collections
+#[instrument(skip(state))]
+async fn list_deleted_collections(
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<Vec<DeletedCollectionInfo>>>, StatusCode> {
+    match state.list_deleted_collections().await {
+        Ok(deleted) => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            let info: Vec<DeletedCollectionInfo> = deleted
+                .into_iter()
+                .map(|(name, path, timestamp)| {
+                    let age_hours = (now.saturating_sub(timestamp)) as f64 / 3600.0;
+                    DeletedCollectionInfo {
+                        name,
+                        path: path.display().to_string(),
+                        deleted_timestamp: timestamp,
+                        age_hours,
+                    }
+                })
+                .collect();
+
+            Ok(Json(ApiResponse::success(info)))
+        }
+        Err(e) => {
+            error!("Failed to list deleted collections: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Restore a collection from backup or soft-delete
+#[instrument(skip(state))]
+async fn restore_collection(
+    State(state): State<AppState>,
+    Json(payload): Json<RestoreRequest>,
+) -> Result<Json<ApiResponse<CreateCollectionResponse>>, StatusCode> {
+    let backup_path = std::path::PathBuf::from(&payload.backup_path);
+
+    match state.restore_collection(&backup_path, payload.new_name.as_deref()).await {
+        Ok(restored_name) => Ok(Json(ApiResponse::success(CreateCollectionResponse {
+            name: restored_name.clone(),
+            message: format!("Collection '{}' restored successfully", restored_name),
+        }))),
+        Err(e) => {
+            error!("Failed to restore collection: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Import orphaned collection data
+#[instrument(skip(state))]
+async fn import_orphaned_collection(
+    State(state): State<AppState>,
+    Json(payload): Json<ImportRequest>,
+) -> Result<Json<ApiResponse<CreateCollectionResponse>>, StatusCode> {
+    let orphaned_path = std::path::PathBuf::from(&payload.orphaned_path);
+
+    let config = CollectionConfig {
+        name: payload.collection_name.clone(),
+        dimension: payload.dimension,
+        distance_metric: payload.distance_metric,
+        vector_type: payload.vector_type,
+        index_config: IndexConfig::default(),
+    };
+
+    match state.import_orphaned_collection(&orphaned_path, &payload.collection_name, &config).await {
+        Ok(()) => Ok(Json(ApiResponse::success(CreateCollectionResponse {
+            name: payload.collection_name.clone(),
+            message: format!("Collection '{}' imported successfully from orphaned data", payload.collection_name),
+        }))),
+        Err(e) => {
+            error!("Failed to import orphaned collection: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Hard delete a collection (permanent, no recovery)
+#[instrument(skip(state))]
+async fn hard_delete_collection(
+    State(state): State<AppState>,
+    Path(collection_name): Path<String>,
+) -> Result<Json<ApiResponse<DeleteCollectionResponse>>, StatusCode> {
+    match state.hard_delete_collection(&collection_name).await {
+        Ok(()) => Ok(Json(ApiResponse::success(DeleteCollectionResponse {
+            name: collection_name.clone(),
+            message: "Collection permanently deleted (no recovery possible)".to_string(),
+        }))),
+        Err(e) => {
+            error!("Failed to hard delete collection: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Cleanup old soft-deleted collections
+#[instrument(skip(state))]
+async fn cleanup_old_deleted(
+    State(state): State<AppState>,
+    Json(payload): Json<CleanupRequest>,
+) -> Result<Json<ApiResponse<Vec<String>>>, StatusCode> {
+    let retention_hours = payload.retention_hours.unwrap_or(24);
+
+    match state.cleanup_old_deleted(retention_hours).await {
+        Ok(cleaned) => Ok(Json(ApiResponse::success(cleaned))),
+        Err(e) => {
+            error!("Failed to cleanup old deleted collections: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
 /// Create REST API router
 pub fn create_router(state: AppState) -> Router {
     use crate::health;
@@ -382,6 +555,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/collections", get(list_collections))
         .route("/collections/:collection", get(get_collection_info))
         .route("/collections/:collection", delete(delete_collection))
+
+        // Recovery operations
+        .route("/collections/:collection/backup", post(backup_collection))
+        .route("/collections/:collection/hard-delete", delete(hard_delete_collection))
+        .route("/collections/deleted", get(list_deleted_collections))
+        .route("/collections/restore", post(restore_collection))
+        .route("/collections/import", post(import_orphaned_collection))
+        .route("/collections/cleanup", post(cleanup_old_deleted))
 
         // Vector operations
         .route("/collections/:collection/vectors", post(insert_vector))
