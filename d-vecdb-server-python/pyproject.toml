@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "d-vecdb-server"
-version = "0.1.8"
+version = "0.2.1"
 authors = [
     {name = "Durai", email = "durai@infinidatum.com"},
 ]
-description = "Complete d-vecDB server package with embedded binaries - zero configuration required"
+description = "Complete d-vecDB server package with recovery system, soft-delete protection, persistent metadata, and embedded binaries - zero configuration required"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.8"

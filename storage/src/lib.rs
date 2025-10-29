@@ -24,20 +24,88 @@ impl StorageEngine {
     pub async fn new<P: AsRef<Path>>(data_dir: P) -> Result<Self> {
         let data_dir = data_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&data_dir)?;
-        
+
         let wal_path = data_dir.join("wal");
         let wal = WriteAheadLog::new(wal_path).await?;
-        
+
         let mut engine = Self {
-            data_dir,
+            data_dir: data_dir.clone(),
             collections: RwLock::new(HashMap::new()),
             wal,
         };
-        
-        // Recover from WAL on startup
+
+        // Step 1: Discover and load existing collections from metadata files
+        engine.discover_collections().await?;
+
+        // Step 2: Recover from WAL on startup (for any pending operations)
         engine.recover().await?;
-        
+
+        tracing::info!("StorageEngine initialized with {} collections", engine.collections.read().len());
+
         Ok(engine)
+    }
+
+    /// Discover existing collections by scanning the data directory for metadata files
+    async fn discover_collections(&mut self) -> Result<()> {
+        tracing::info!("Discovering existing collections in: {}", self.data_dir.display());
+
+        let entries = match std::fs::read_dir(&self.data_dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!("Data directory does not exist yet, skipping discovery");
+                return Ok(());
+            }
+            Err(e) => return Err(VectorDbError::Io(e)),
+        };
+
+        let mut discovered_count = 0;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip non-directories and special directories
+            if !path.is_dir() {
+                continue;
+            }
+
+            let dir_name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(name) => name,
+                None => continue,
+            };
+
+            // Skip special directories (WAL, backups, deleted)
+            if dir_name == "wal" || dir_name.starts_with('.') {
+                continue;
+            }
+
+            // Check for metadata.json file
+            let metadata_path = path.join("metadata.json");
+            if !metadata_path.exists() {
+                tracing::warn!(
+                    "Collection directory '{}' exists but has no metadata.json, skipping",
+                    dir_name
+                );
+                continue;
+            }
+
+            // Load the collection
+            match CollectionStorage::load(&path).await {
+                Ok(storage) => {
+                    let collection_name = storage.config().name.clone();
+                    self.collections.write().insert(collection_name.clone(), Arc::new(storage));
+                    discovered_count += 1;
+                    tracing::info!("Discovered collection: {}", collection_name);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to load collection from '{}': {}", dir_name, e);
+                    // Continue with other collections instead of failing completely
+                }
+            }
+        }
+
+        tracing::info!("Discovered {} collections from metadata files", discovered_count);
+        Ok(())
     }
     
     pub async fn create_collection(&self, config: &CollectionConfig) -> Result<()> {
@@ -330,26 +398,74 @@ pub struct CollectionStorage {
     config: CollectionConfig,
     data_file: MMapStorage,
     index_file: MMapStorage,
+    metadata_path: PathBuf,
 }
 
 impl CollectionStorage {
     async fn new<P: AsRef<Path>>(dir: P, config: CollectionConfig) -> Result<Self> {
         let dir = dir.as_ref();
         std::fs::create_dir_all(dir)?;
-        
+
         let data_path = dir.join("vectors.bin");
         let index_path = dir.join("index.bin");
-        
+        let metadata_path = dir.join("metadata.json");
+
         let data_file = MMapStorage::new(data_path).await?;
         let index_file = MMapStorage::new(index_path).await?;
-        
+
+        let storage = Self {
+            config: config.clone(),
+            data_file,
+            index_file,
+            metadata_path: metadata_path.clone(),
+        };
+
+        // Persist metadata to disk
+        storage.save_metadata().await?;
+
+        Ok(storage)
+    }
+
+    /// Load collection from existing directory (used during startup recovery)
+    async fn load<P: AsRef<Path>>(dir: P) -> Result<Self> {
+        let dir = dir.as_ref();
+        let metadata_path = dir.join("metadata.json");
+
+        // Load metadata from disk
+        let metadata_content = std::fs::read_to_string(&metadata_path)
+            .map_err(|e| VectorDbError::Io(e))?;
+
+        let config: CollectionConfig = serde_json::from_str(&metadata_content)
+            .map_err(|e| VectorDbError::Serialization(format!("Failed to deserialize metadata: {}", e)))?;
+
+        let data_path = dir.join("vectors.bin");
+        let index_path = dir.join("index.bin");
+
+        let data_file = MMapStorage::new(data_path).await?;
+        let index_file = MMapStorage::new(index_path).await?;
+
+        tracing::info!("Loaded collection '{}' from metadata", config.name);
+
         Ok(Self {
             config,
             data_file,
             index_file,
+            metadata_path,
         })
     }
-    
+
+    /// Save collection metadata to disk
+    async fn save_metadata(&self) -> Result<()> {
+        let metadata_json = serde_json::to_string_pretty(&self.config)
+            .map_err(|e| VectorDbError::Serialization(format!("Failed to serialize metadata: {}", e)))?;
+
+        std::fs::write(&self.metadata_path, metadata_json)
+            .map_err(|e| VectorDbError::Io(e))?;
+
+        tracing::debug!("Saved metadata for collection: {}", self.config.name);
+        Ok(())
+    }
+
     fn config(&self) -> &CollectionConfig {
         &self.config
     }
