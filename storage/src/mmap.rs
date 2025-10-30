@@ -19,14 +19,14 @@ pub struct MMapStorage {
 impl MMapStorage {
     pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        
+
         // Create or open file
         let file = OpenOptions::new()
             .create(true)
             .read(true)
             .write(true)
             .open(&path)?;
-        
+
         // Get current size or initialize
         let current_size = file.metadata()?.len();
         let size = if current_size == 0 {
@@ -35,21 +35,66 @@ impl MMapStorage {
         } else {
             current_size
         };
-        
+
         // Create memory mapping
         let mmap = unsafe {
             MmapOptions::new()
                 .len(size as usize)
                 .map_mut(&file)?
         };
-        
+
+        // Calculate actual data position by scanning existing records
+        // This is crucial for restart persistence - we need to know where data ends
+        let data_position = Self::calculate_data_end(&mmap, current_size)?;
+
+        tracing::debug!(
+            "Opened storage file: size={}, data_position={}",
+            current_size,
+            data_position
+        );
+
         Ok(Self {
             path,
             file: Mutex::new(file),
             mmap: Mutex::new(Some(mmap)),
             size: Mutex::new(size),
-            position: Mutex::new(0),
+            position: Mutex::new(data_position),
         })
+    }
+
+    /// Calculate where actual data ends by scanning length-prefixed records
+    fn calculate_data_end(mmap: &MmapMut, file_size: u64) -> Result<u64> {
+        let mut position: u64 = 0;
+        let mut record_count = 0;
+
+        // Scan through all records to find where data actually ends
+        while position + 4 <= file_size {
+            // Read length prefix (4 bytes, u32 little-endian)
+            let length_bytes = &mmap[position as usize..(position + 4) as usize];
+            let length = u32::from_le_bytes([
+                length_bytes[0],
+                length_bytes[1],
+                length_bytes[2],
+                length_bytes[3],
+            ]) as u64;
+
+            // Check for end of data (zero length or invalid)
+            if length == 0 || position + 4 + length > file_size {
+                break;
+            }
+
+            // Move to next record
+            position += 4 + length;
+            record_count += 1;
+        }
+
+        tracing::debug!(
+            "Scanned storage: found {} records, data ends at position {}",
+            record_count,
+            position
+        );
+
+        Ok(position)
     }
     
     /// Append data to the storage
