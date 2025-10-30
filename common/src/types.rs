@@ -72,7 +72,7 @@ pub struct Vector {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
-/// Custom serde module for metadata that works with bincode
+/// Custom serde module for metadata that works with both bincode and JSON
 mod metadata_serde {
     use super::*;
 
@@ -83,13 +83,19 @@ mod metadata_serde {
     where
         S: Serializer,
     {
-        match metadata {
-            Some(map) => {
-                let json_string = serde_json::to_string(map)
-                    .map_err(serde::ser::Error::custom)?;
-                serializer.serialize_some(&json_string)
+        if serializer.is_human_readable() {
+            // For JSON (human-readable): serialize as native object
+            metadata.serialize(serializer)
+        } else {
+            // For bincode (non-human-readable): serialize as JSON string
+            match metadata {
+                Some(map) => {
+                    let json_string = serde_json::to_string(map)
+                        .map_err(serde::ser::Error::custom)?;
+                    serializer.serialize_some(&json_string)
+                }
+                None => serializer.serialize_none(),
             }
-            None => serializer.serialize_none(),
         }
     }
 
@@ -99,14 +105,20 @@ mod metadata_serde {
     where
         D: Deserializer<'de>,
     {
-        let opt_string: Option<String> = Option::deserialize(deserializer)?;
-        match opt_string {
-            Some(json_string) => {
-                let map: HashMap<String, serde_json::Value> = serde_json::from_str(&json_string)
-                    .map_err(serde::de::Error::custom)?;
-                Ok(Some(map))
+        if deserializer.is_human_readable() {
+            // For JSON (human-readable): deserialize as native object
+            Option::<HashMap<String, serde_json::Value>>::deserialize(deserializer)
+        } else {
+            // For bincode (non-human-readable): deserialize from JSON string
+            let opt_string: Option<String> = Option::deserialize(deserializer)?;
+            match opt_string {
+                Some(json_string) => {
+                    let map: HashMap<String, serde_json::Value> = serde_json::from_str(&json_string)
+                        .map_err(serde::de::Error::custom)?;
+                    Ok(Some(map))
+                }
+                None => Ok(None),
             }
-            None => Ok(None),
         }
     }
 }
