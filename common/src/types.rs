@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -25,12 +25,90 @@ pub enum DistanceMetric {
     Manhattan,
 }
 
+/// Metadata stored as JSON string for bincode compatibility
+/// This ensures metadata can be serialized/deserialized with bincode
+#[derive(Debug, Clone)]
+pub struct Metadata(pub Option<HashMap<String, serde_json::Value>>);
+
+impl Serialize for Metadata {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match &self.0 {
+            Some(map) => {
+                let json_string = serde_json::to_string(map)
+                    .map_err(serde::ser::Error::custom)?;
+                serializer.serialize_some(&json_string)
+            }
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Metadata {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt_string: Option<String> = Option::deserialize(deserializer)?;
+        match opt_string {
+            Some(json_string) => {
+                let map: HashMap<String, serde_json::Value> = serde_json::from_str(&json_string)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(Metadata(Some(map)))
+            }
+            None => Ok(Metadata(None)),
+        }
+    }
+}
+
 /// Vector data with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vector {
     pub id: VectorId,
     pub data: Vec<f32>,
+    #[serde(with = "metadata_serde")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+/// Custom serde module for metadata that works with bincode
+mod metadata_serde {
+    use super::*;
+
+    pub fn serialize<S>(
+        metadata: &Option<HashMap<String, serde_json::Value>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match metadata {
+            Some(map) => {
+                let json_string = serde_json::to_string(map)
+                    .map_err(serde::ser::Error::custom)?;
+                serializer.serialize_some(&json_string)
+            }
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Option<HashMap<String, serde_json::Value>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt_string: Option<String> = Option::deserialize(deserializer)?;
+        match opt_string {
+            Some(json_string) => {
+                let map: HashMap<String, serde_json::Value> = serde_json::from_str(&json_string)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(Some(map))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// Collection configuration
@@ -70,6 +148,7 @@ pub struct QueryRequest {
     pub vector: Vec<f32>,
     pub limit: usize,
     pub ef_search: Option<usize>,
+    #[serde(with = "metadata_serde")]
     pub filter: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -78,6 +157,7 @@ pub struct QueryRequest {
 pub struct QueryResult {
     pub id: VectorId,
     pub distance: f32,
+    #[serde(with = "metadata_serde")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
