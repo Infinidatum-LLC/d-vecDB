@@ -25,10 +25,10 @@ def read_requirements():
 
 setup(
     name="d-vecdb",
-    version="0.2.1",
+    version="0.2.2",
     author="d-vecDB Team",
     author_email="durai@infinidatum.com",
-    description="High-performance Python client for d-vecDB vector database with WAL corruption protection and GPU acceleration support",
+    description="High-performance Python client for d-vecDB vector database with recovery system, soft-delete protection, and GPU acceleration",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url="https://github.com/rdmurugan/d-vecDB",

@@ -91,6 +91,7 @@ struct BatchInsertRequest {
 /// Query request
 #[derive(Deserialize, Debug)]
 struct QueryVectorsRequest {
+    #[serde(alias = "query_vector")]
     vector: Vec<f32>,
     limit: Option<usize>,
     ef_search: Option<usize>,

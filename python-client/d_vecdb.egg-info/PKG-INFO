@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: d-vecdb
-Version: 0.2.1
-Summary: High-performance Python client for d-vecDB vector database with WAL corruption protection and GPU acceleration support
+Version: 0.2.2
+Summary: High-performance Python client for d-vecDB vector database with recovery system, soft-delete protection, and GPU acceleration
 Home-page: https://github.com/rdmurugan/d-vecDB
 Author: d-vecDB Team
 Author-email: durai@infinidatum.com

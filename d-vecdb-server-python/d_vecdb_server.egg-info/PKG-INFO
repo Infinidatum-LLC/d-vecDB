@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: d-vecdb-server
-Version: 0.1.8
-Summary: Complete d-vecDB server package with embedded binaries - zero configuration required
+Version: 0.2.1
+Summary: Complete d-vecDB server package with recovery system, soft-delete protection, persistent metadata, and embedded binaries - zero configuration required
 Author-email: Durai <durai@infinidatum.com>
 License-Expression: MIT
 Project-URL: Homepage, https://github.com/rdmurugan/d-vecDB
