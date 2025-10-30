@@ -299,6 +299,21 @@ impl StorageEngine {
         Ok(())
     }
 
+    /// Get all vectors from a collection (used for index rebuilding)
+    pub async fn get_all_vectors(&self, collection: &str) -> Result<Vec<Vector>> {
+        let storage = {
+            let collections = self.collections.read();
+            collections
+                .get(collection)
+                .ok_or_else(|| VectorDbError::CollectionNotFound {
+                    name: collection.to_string(),
+                })?
+                .clone()
+        };
+
+        storage.iter_vectors().await
+    }
+
     /// Get recovery manager for backup/restore operations
     pub fn get_recovery_manager(&self) -> RecoveryManager {
         RecoveryManager::new(&self.data_dir)
@@ -543,5 +558,33 @@ impl CollectionStorage {
         self.data_file.sync().await?;
         self.index_file.sync().await?;
         Ok(())
+    }
+
+    /// Iterate over all vectors in the collection
+    pub async fn iter_vectors(&self) -> Result<Vec<Vector>> {
+        let mut vectors = Vec::new();
+        let mut iter = self.data_file.iter().await?;
+
+        while let Some(data) = iter.next().await? {
+            match bincode::deserialize::<Vector>(&data) {
+                Ok(vector) => vectors.push(vector),
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to deserialize vector in collection '{}': {}",
+                        self.config.name,
+                        e
+                    );
+                    // Continue with next vector instead of failing completely
+                }
+            }
+        }
+
+        tracing::info!(
+            "Loaded {} vectors from storage for collection '{}'",
+            vectors.len(),
+            self.config.name
+        );
+
+        Ok(vectors)
     }
 }

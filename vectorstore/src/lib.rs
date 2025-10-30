@@ -4,7 +4,7 @@ use vectordb_storage::StorageEngine;
 use vectordb_index::{VectorIndex, HnswRsIndex};  // Use production-ready HNSW
 use std::sync::Arc;
 use dashmap::DashMap;
-use tracing::info;
+use tracing::{info, error};
 use metrics::{counter, histogram, gauge};
 
 /// Main vector store engine that coordinates storage and indexing
@@ -326,27 +326,52 @@ impl VectorStore {
     /// Rebuild indexes from storage (used during startup)
     async fn rebuild_indexes(&mut self) -> Result<()> {
         info!("Rebuilding indexes from storage...");
-        
+
         let collections = self.storage.list_collections();
-        
+
         for collection_name in collections {
             if let Some(config) = self.storage.get_collection_config(&collection_name)? {
                 info!("Rebuilding index for collection: {}", collection_name);
 
-                let index = Box::new(HnswRsIndex::new(
+                // Create new index
+                let mut index = Box::new(HnswRsIndex::new(
                     config.index_config.clone(),
                     config.distance_metric,
                     config.dimension,
                 ));
 
-                // TODO: Iterate through all vectors in storage and rebuild index
-                // This would require implementing an iterator over stored vectors
-                // For now, we create an empty index
+                // Load all vectors from storage and rebuild the index
+                match self.storage.get_all_vectors(&collection_name).await {
+                    Ok(vectors) => {
+                        info!("Loading {} vectors into index for collection '{}'", vectors.len(), collection_name);
+
+                        // Prepare vectors for batch insert
+                        let vectors_to_insert: Vec<(uuid::Uuid, Vec<f32>, Option<_>)> = vectors
+                            .iter()
+                            .map(|v| (v.id, v.data.clone(), v.metadata.clone()))
+                            .collect();
+
+                        // Batch insert all vectors into the index
+                        if !vectors_to_insert.is_empty() {
+                            if let Err(e) = index.batch_insert(vectors_to_insert) {
+                                error!("Failed to rebuild index for collection '{}': {}", collection_name, e);
+                                // Continue with empty index rather than failing completely
+                            } else {
+                                info!("Successfully rebuilt index for collection '{}' with {} vectors",
+                                      collection_name, vectors.len());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to load vectors for collection '{}': {}", collection_name, e);
+                        // Continue with empty index rather than failing completely
+                    }
+                }
 
                 self.indexes.insert(collection_name.clone(), index);
             }
         }
-        
+
         info!("Index rebuild completed");
         Ok(())
     }
