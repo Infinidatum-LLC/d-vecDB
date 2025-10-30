@@ -492,12 +492,18 @@ impl CollectionStorage {
                 actual: vector.data.len(),
             });
         }
-        
+
         let serialized = bincode::serialize(vector)
             .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
-        
-        self.data_file.append(&serialized).await?;
-        
+
+        // Write length prefix (4 bytes, u32 little-endian) + data
+        let length = serialized.len() as u32;
+        let mut record = Vec::with_capacity(4 + serialized.len());
+        record.extend_from_slice(&length.to_le_bytes());
+        record.extend_from_slice(&serialized);
+
+        self.data_file.append(&record).await?;
+
         Ok(())
     }
     
@@ -518,11 +524,18 @@ impl CollectionStorage {
 
         // Serialize all vectors into a single buffer to reduce async calls
         // This is much faster than calling append() for each vector
+        // Format: [length_prefix(4 bytes)][serialized_data][length_prefix][data]...
         let mut batch_buffer = Vec::with_capacity(vectors.len() * (self.config.dimension * 4 + 100));
 
         for vector in vectors {
             let serialized = bincode::serialize(vector)
                 .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
+
+            // Write length prefix (4 bytes, u32 little-endian)
+            let length = serialized.len() as u32;
+            batch_buffer.extend_from_slice(&length.to_le_bytes());
+
+            // Write serialized vector data
             batch_buffer.extend_from_slice(&serialized);
         }
 
