@@ -163,16 +163,32 @@ export class RestClient {
   }
 
   /**
-   * List all collections
+   * List all collection names (fast - no details)
+   */
+  async listCollectionNames(): Promise<string[]> {
+    const response = await this.client.get('/collections');
+    return this.unwrapResponse<string[]>(response.data);
+  }
+
+  /**
+   * List all collections with full details (slower - fetches each collection)
    */
   async listCollections(): Promise<ListCollectionsResponse> {
-    const response = await this.client.get('/collections');
-    const data = this.unwrapResponse<unknown[]>(response.data);
-    return {
-      collections: (Array.isArray(data) ? data : []).map((c: unknown) =>
-        this.transformCollectionInfo(c)
-      ),
-    };
+    const collectionNames = await this.listCollectionNames();
+
+    // Fetch details for each collection
+    const collections: CollectionInfo[] = [];
+    for (const name of collectionNames) {
+      try {
+        const collectionResponse = await this.getCollection(name);
+        collections.push(collectionResponse.collection);
+      } catch (error) {
+        // If a collection can't be fetched, skip it but continue with others
+        console.warn(`Failed to fetch details for collection '${name}':`, error);
+      }
+    }
+
+    return { collections };
   }
 
   /**
@@ -188,20 +204,25 @@ export class RestClient {
    * Get collection statistics
    */
   async getCollectionStats(name: string): Promise<CollectionStats> {
-    const response = await this.client.get(`/collections/${name}/stats`);
-    const data = this.unwrapResponse<{
+    // Note: Server returns both config and stats from /collections/:collection endpoint
+    const response = await this.client.get(`/collections/${name}`);
+    const data = this.unwrapResponse<[unknown, {
       name: string;
       vector_count: number;
       dimension: number;
       index_size: number;
       memory_usage: number;
-    }>(response.data);
+    }]>(response.data);
+
+    // Extract stats from the tuple response [config, stats]
+    const stats = Array.isArray(data) ? data[1] : (data as any);
+
     return {
-      name: data.name,
-      vectorCount: data.vector_count,
-      dimension: data.dimension,
-      indexSize: data.index_size,
-      memoryUsage: data.memory_usage,
+      name: stats.name,
+      vectorCount: stats.vector_count,
+      dimension: stats.dimension,
+      indexSize: stats.index_size,
+      memoryUsage: stats.memory_usage,
     };
   }
 
@@ -368,6 +389,16 @@ export class RestClient {
    * Transform collection response from API format to client format
    */
   private transformCollectionResponse(data: unknown): CollectionResponse {
+    // Server returns tuple: [CollectionConfig, CollectionStats]
+    if (Array.isArray(data) && data.length === 2) {
+      const [config] = data;
+      return {
+        collection: this.transformCollectionInfo(config),
+        message: undefined,
+      };
+    }
+
+    // Fallback for other response formats (e.g., creation responses)
     const d = data as {
       collection?: unknown;
       message?: string;

@@ -1,7 +1,7 @@
 {
   "name": "d-vecdb",
-  "version": "0.2.0",
-  "description": "TypeScript/JavaScript client for d-vecDB - High-performance vector database with WAL corruption protection and GPU acceleration",
+  "version": "0.2.2",
+  "description": "TypeScript/JavaScript client for d-vecDB - High-performance vector database with persistent metadata, WAL corruption protection and GPU acceleration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

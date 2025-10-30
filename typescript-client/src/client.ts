@@ -85,9 +85,18 @@ export class VectorDBClient {
   }
 
   /**
-   * List all collections
+   * List all collection names (fast - returns only names)
    *
-   * @returns List of collections
+   * @returns Array of collection names
+   */
+  async listCollectionNames(): Promise<string[]> {
+    return this.restClient.listCollectionNames();
+  }
+
+  /**
+   * List all collections with full details (slower - fetches each collection)
+   *
+   * @returns List of collections with complete information
    */
   async listCollections(): Promise<ListCollectionsResponse> {
     return this.restClient.listCollections();
