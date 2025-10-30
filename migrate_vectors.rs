@@ -2,6 +2,14 @@
 //! Migrate old vectors.bin format to new format with length prefixes
 //!
 //! Usage: rust-script migrate_vectors.rs /path/to/collection/dir
+//!
+//! ```cargo
+//! [dependencies]
+//! serde = { version = "1.0", features = ["derive"] }
+//! serde_json = "1.0"
+//! uuid = { version = "1.0", features = ["serde", "v4"] }
+//! bincode = "1.3"
+//! ```
 
 use std::env;
 use std::fs::{self, File};
