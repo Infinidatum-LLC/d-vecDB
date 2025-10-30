@@ -5,7 +5,8 @@
       "Bash(git commit -m \"docs: Add comprehensive documentation for index rebuild fix and TypeScript client bugs\")",
       "Bash(chmod:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(ssh:*)"
     ],
     "deny": [],
     "ask": []
