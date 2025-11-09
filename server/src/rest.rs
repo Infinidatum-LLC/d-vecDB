@@ -89,6 +89,25 @@ struct BatchInsertRequest {
     vectors: Vec<InsertVectorRequest>,
 }
 
+/// Batch upsert response
+#[derive(Serialize, Debug)]
+struct BatchUpsertResponse {
+    upserted_count: usize,
+    ids: Vec<String>,
+}
+
+/// Batch delete request
+#[derive(Deserialize, Debug)]
+struct BatchDeleteRequest {
+    ids: Vec<String>,
+}
+
+/// Batch delete response
+#[derive(Serialize, Debug)]
+struct BatchDeleteResponse {
+    deleted_count: usize,
+}
+
 /// Query request
 #[derive(Deserialize, Debug)]
 struct QueryVectorsRequest {
@@ -261,6 +280,88 @@ async fn batch_insert_vectors(
                 "Batch operation timed out after {:?} while inserting {} vectors. Try reducing batch size.",
                 batch_timeout,
                 vectors.len()
+            ))))
+        }
+    }
+}
+
+/// Batch upsert vectors (update if exists, insert if not)
+#[instrument(skip(state))]
+async fn batch_upsert_vectors(
+    State(state): State<AppState>,
+    Path(collection_name): Path<String>,
+    Json(payload): Json<BatchInsertRequest>,
+) -> Result<Json<ApiResponse<BatchUpsertResponse>>, StatusCode> {
+    let mut vectors = Vec::new();
+    let mut vector_ids = Vec::new();
+
+    for vector_req in payload.vectors {
+        let vector_id = if let Some(id_str) = vector_req.id {
+            Uuid::parse_str(&id_str)
+                .map_err(|_| StatusCode::BAD_REQUEST)?
+        } else {
+            Uuid::new_v4()
+        };
+
+        vector_ids.push(vector_id.to_string());
+        vectors.push(Vector {
+            id: vector_id,
+            data: vector_req.data,
+            metadata: vector_req.metadata,
+        });
+    }
+
+    let batch_timeout = Duration::from_secs(60);
+    match timeout(batch_timeout, state.batch_upsert(&collection_name, &vectors)).await {
+        Ok(Ok(count)) => Ok(Json(ApiResponse::success(BatchUpsertResponse {
+            upserted_count: count,
+            ids: vector_ids,
+        }))),
+        Ok(Err(e)) => {
+            error!("Failed to batch upsert vectors: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+        Err(_) => {
+            error!("Batch upsert timed out after {:?} for {} vectors", batch_timeout, vectors.len());
+            Ok(Json(ApiResponse::error(format!(
+                "Batch operation timed out after {:?} while upserting {} vectors. Try reducing batch size.",
+                batch_timeout,
+                vectors.len()
+            ))))
+        }
+    }
+}
+
+/// Batch delete vectors
+#[instrument(skip(state))]
+async fn batch_delete_vectors(
+    State(state): State<AppState>,
+    Path(collection_name): Path<String>,
+    Json(payload): Json<BatchDeleteRequest>,
+) -> Result<Json<ApiResponse<BatchDeleteResponse>>, StatusCode> {
+    let mut ids = Vec::new();
+
+    for id_str in &payload.ids {
+        let uuid = Uuid::parse_str(id_str)
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        ids.push(uuid);
+    }
+
+    let batch_timeout = Duration::from_secs(60);
+    match timeout(batch_timeout, state.batch_delete(&collection_name, &ids)).await {
+        Ok(Ok(deleted_count)) => Ok(Json(ApiResponse::success(BatchDeleteResponse {
+            deleted_count,
+        }))),
+        Ok(Err(e)) => {
+            error!("Failed to batch delete vectors: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+        Err(_) => {
+            error!("Batch delete timed out after {:?} for {} vectors", batch_timeout, ids.len());
+            Ok(Json(ApiResponse::error(format!(
+                "Batch operation timed out after {:?} while deleting {} vectors. Try reducing batch size.",
+                batch_timeout,
+                ids.len()
             ))))
         }
     }
@@ -740,6 +841,8 @@ pub fn create_router(state: AppState) -> Router {
         // Vector operations
         .route("/collections/:collection/vectors", post(insert_vector))
         .route("/collections/:collection/vectors/batch", post(batch_insert_vectors))
+        .route("/collections/:collection/vectors/upsert", post(batch_upsert_vectors))
+        .route("/collections/:collection/vectors/batch-delete", post(batch_delete_vectors))
         .route("/collections/:collection/search", post(query_vectors))
         .route("/collections/:collection/vectors/:vector_id", get(get_vector))
         .route("/collections/:collection/vectors/:vector_id", put(update_vector))

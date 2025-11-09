@@ -320,4 +320,93 @@ impl VectorDbClient for RestClient {
             Err(_) => Ok(false),
         }
     }
+
+    // Advanced Search APIs
+
+    #[instrument(skip(self))]
+    async fn recommend(&self, request: &vectordb_common::search_api::RecommendRequest) -> Result<Vec<QueryResult>> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/points/recommend", self.base_url, request.collection))
+            .json(request);
+
+        self.request_with_retry::<Vec<QueryResult>>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn discover(&self, request: &vectordb_common::search_api::DiscoveryRequest) -> Result<Vec<QueryResult>> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/points/discover", self.base_url, request.collection))
+            .json(request);
+
+        self.request_with_retry::<Vec<QueryResult>>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn scroll(&self, request: &vectordb_common::search_api::ScrollRequest) -> Result<vectordb_common::search_api::ScrollResponse> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/points/scroll", self.base_url, request.collection))
+            .json(request);
+
+        self.request_with_retry::<vectordb_common::search_api::ScrollResponse>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn count(&self, request: &vectordb_common::search_api::CountRequest) -> Result<vectordb_common::search_api::CountResponse> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/points/count", self.base_url, request.collection))
+            .json(request);
+
+        self.request_with_retry::<vectordb_common::search_api::CountResponse>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn batch_search(&self, request: &vectordb_common::search_api::BatchSearchRequest) -> Result<Vec<Vec<QueryResult>>> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/points/search/batch", self.base_url, request.collection))
+            .json(request);
+
+        self.request_with_retry::<Vec<Vec<QueryResult>>>(http_request).await
+    }
+
+    // Snapshot Management APIs
+
+    #[instrument(skip(self))]
+    async fn create_snapshot(&self, collection: &str) -> Result<vectordb_storage::SnapshotMetadata> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/snapshots", self.base_url, collection));
+
+        self.request_with_retry::<vectordb_storage::SnapshotMetadata>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn list_snapshots(&self, collection: &str) -> Result<Vec<vectordb_storage::SnapshotMetadata>> {
+        let http_request = self.client
+            .get(&format!("{}/collections/{}/snapshots", self.base_url, collection));
+
+        self.request_with_retry::<Vec<vectordb_storage::SnapshotMetadata>>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn get_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<vectordb_storage::SnapshotMetadata> {
+        let http_request = self.client
+            .get(&format!("{}/collections/{}/snapshots/{}", self.base_url, collection, snapshot_name));
+
+        self.request_with_retry::<vectordb_storage::SnapshotMetadata>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<()> {
+        let http_request = self.client
+            .delete(&format!("{}/collections/{}/snapshots/{}", self.base_url, collection, snapshot_name));
+
+        self.request_with_retry::<()>(http_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn restore_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<()> {
+        let http_request = self.client
+            .post(&format!("{}/collections/{}/snapshots/{}/restore", self.base_url, collection, snapshot_name));
+
+        self.request_with_retry::<()>(http_request).await
+    }
 }

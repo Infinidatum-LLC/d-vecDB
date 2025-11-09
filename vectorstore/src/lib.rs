@@ -526,15 +526,117 @@ impl VectorStore {
     /// Update a vector
     pub async fn update(&self, collection: &str, vector: &Vector) -> Result<()> {
         counter!("vectorstore.vectors.updated").increment(1);
-        
+
         // For now, implement as delete + insert
         // A more efficient implementation would update in-place
         self.delete(collection, &vector.id).await?;
         self.insert(collection, vector).await?;
-        
+
         Ok(())
     }
-    
+
+    /// Batch delete vectors
+    pub async fn batch_delete(&self, collection: &str, ids: &[VectorId]) -> Result<usize> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.vectors.batch_deleted").increment(ids.len() as u64);
+
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        // Validate collection exists
+        self.get_collection_config(collection)?
+            .ok_or_else(|| VectorDbError::CollectionNotFound {
+                name: collection.to_string(),
+            })?;
+
+        let mut deleted_count = 0;
+
+        // Delete from storage (batch operation)
+        for id in ids {
+            if self.storage.delete_vector(collection, id).await? {
+                deleted_count += 1;
+            }
+        }
+
+        // Delete from index
+        if let Some(mut index) = self.indexes.get_mut(collection) {
+            for id in ids {
+                let _ = index.delete(id); // Continue even if some deletes fail
+            }
+        }
+
+        histogram!("vectorstore.batch_delete.duration").record(start.elapsed().as_secs_f64());
+        histogram!("vectorstore.batch_delete.count").record(deleted_count as f64);
+
+        Ok(deleted_count)
+    }
+
+    /// Batch upsert vectors (update if exists, insert if not)
+    pub async fn batch_upsert(&self, collection: &str, vectors: &[Vector]) -> Result<usize> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.vectors.batch_upserted").increment(vectors.len() as u64);
+
+        if vectors.is_empty() {
+            return Ok(0);
+        }
+
+        // Validate collection exists
+        let config = self.get_collection_config(collection)?
+            .ok_or_else(|| VectorDbError::CollectionNotFound {
+                name: collection.to_string(),
+            })?;
+
+        // Validate all vector dimensions
+        for vector in vectors {
+            if vector.data.len() != config.dimension {
+                return Err(VectorDbError::InvalidDimension {
+                    expected: config.dimension,
+                    actual: vector.data.len(),
+                });
+            }
+        }
+
+        let mut upserted_count = 0;
+
+        // Check which vectors exist and need updating
+        let mut vectors_to_insert = Vec::new();
+        let mut ids_to_delete = Vec::new();
+
+        for vector in vectors {
+            if self.storage.get_vector(collection, &vector.id).await?.is_some() {
+                // Vector exists, mark for deletion (we'll reinsert)
+                ids_to_delete.push(vector.id);
+            }
+            vectors_to_insert.push(vector.clone());
+        }
+
+        // Delete existing vectors from index
+        if !ids_to_delete.is_empty() {
+            if let Some(mut index) = self.indexes.get_mut(collection) {
+                for id in &ids_to_delete {
+                    let _ = index.delete(id);
+                }
+            }
+        }
+
+        // Insert/update all vectors in storage
+        self.storage.batch_insert(collection, &vectors_to_insert).await?;
+
+        // Add all vectors to index
+        if let Some(mut index) = self.indexes.get_mut(collection) {
+            for vector in &vectors_to_insert {
+                index.insert(vector.id, &vector.data, vector.metadata.clone())?;
+                upserted_count += 1;
+            }
+        }
+
+        histogram!("vectorstore.batch_upsert.duration").record(start.elapsed().as_secs_f64());
+        histogram!("vectorstore.batch_upsert.count").record(upserted_count as f64);
+
+        Ok(upserted_count)
+    }
+
     /// Get a vector by ID
     pub async fn get(&self, collection: &str, id: &VectorId) -> Result<Option<Vector>> {
         self.storage.get_vector(collection, id).await

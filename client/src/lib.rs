@@ -14,39 +14,73 @@ pub use rest_client::*;
 pub trait VectorDbClient: Send + Sync {
     /// Create a new collection
     async fn create_collection(&self, config: &CollectionConfig) -> Result<()>;
-    
+
     /// Delete a collection
     async fn delete_collection(&self, name: &str) -> Result<()>;
-    
+
     /// List all collections
     async fn list_collections(&self) -> Result<Vec<CollectionId>>;
-    
+
     /// Get collection information
     async fn get_collection_info(&self, name: &str) -> Result<(CollectionConfig, CollectionStats)>;
-    
+
     /// Insert a single vector
     async fn insert(&self, collection: &str, vector: &Vector) -> Result<()>;
-    
+
     /// Insert multiple vectors
     async fn batch_insert(&self, collection: &str, vectors: &[Vector]) -> Result<()>;
-    
+
     /// Query for nearest neighbors
     async fn query(&self, request: &QueryRequest) -> Result<Vec<QueryResult>>;
-    
+
     /// Get a vector by ID
     async fn get(&self, collection: &str, id: &VectorId) -> Result<Option<Vector>>;
-    
+
     /// Update a vector
     async fn update(&self, collection: &str, vector: &Vector) -> Result<()>;
-    
+
     /// Delete a vector
     async fn delete(&self, collection: &str, id: &VectorId) -> Result<bool>;
-    
+
     /// Get server statistics
     async fn get_stats(&self) -> Result<ServerStats>;
-    
+
     /// Check server health
     async fn health(&self) -> Result<bool>;
+
+    // Advanced Search APIs
+
+    /// Recommend vectors based on positive and negative examples
+    async fn recommend(&self, request: &vectordb_common::search_api::RecommendRequest) -> Result<Vec<QueryResult>>;
+
+    /// Discovery search - find vectors between positive and negative context
+    async fn discover(&self, request: &vectordb_common::search_api::DiscoveryRequest) -> Result<Vec<QueryResult>>;
+
+    /// Scroll through all vectors with optional filtering
+    async fn scroll(&self, request: &vectordb_common::search_api::ScrollRequest) -> Result<vectordb_common::search_api::ScrollResponse>;
+
+    /// Count vectors matching filter criteria
+    async fn count(&self, request: &vectordb_common::search_api::CountRequest) -> Result<vectordb_common::search_api::CountResponse>;
+
+    /// Batch search - execute multiple queries in one request
+    async fn batch_search(&self, request: &vectordb_common::search_api::BatchSearchRequest) -> Result<Vec<Vec<QueryResult>>>;
+
+    // Snapshot Management APIs
+
+    /// Create a snapshot of a collection
+    async fn create_snapshot(&self, collection: &str) -> Result<vectordb_storage::SnapshotMetadata>;
+
+    /// List all snapshots for a collection
+    async fn list_snapshots(&self, collection: &str) -> Result<Vec<vectordb_storage::SnapshotMetadata>>;
+
+    /// Get snapshot metadata
+    async fn get_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<vectordb_storage::SnapshotMetadata>;
+
+    /// Delete a snapshot
+    async fn delete_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<()>;
+
+    /// Restore collection from snapshot
+    async fn restore_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<()>;
 }
 
 /// Server statistics

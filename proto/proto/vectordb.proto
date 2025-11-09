@@ -20,6 +20,20 @@ service VectorDb {
   // Server operations
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Advanced search operations
+  rpc Recommend(RecommendRequest) returns (RecommendResponse);
+  rpc Discover(DiscoverRequest) returns (DiscoverResponse);
+  rpc Scroll(ScrollRequest) returns (ScrollResponse);
+  rpc Count(CountRequest) returns (CountResponse);
+  rpc BatchSearch(BatchSearchRequest) returns (BatchSearchResponse);
+
+  // Snapshot operations
+  rpc CreateSnapshot(CreateSnapshotRequest) returns (CreateSnapshotResponse);
+  rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
+  rpc DeleteSnapshot(DeleteSnapshotRequest) returns (DeleteSnapshotResponse);
+  rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse);
 }
 
 // Enums
@@ -183,4 +197,148 @@ message HealthRequest {}
 message HealthResponse {
   bool healthy = 1;
   string status = 2;
+}
+
+// Advanced search operations
+
+message RecommendRequest {
+  string collection_name = 1;
+  repeated string positive_ids = 2;
+  repeated string negative_ids = 3;
+  optional string filter_json = 4;
+  uint32 limit = 5;
+  uint32 offset = 6;
+  string strategy = 7; // "average_vector" or "best_score"
+}
+
+message RecommendResponse {
+  repeated QueryResult results = 1;
+}
+
+message DiscoverRequest {
+  string collection_name = 1;
+  oneof target {
+    string target_id = 2;
+    repeated float target_vector = 3;
+  }
+  repeated ContextPair context_pairs = 4;
+  optional string filter_json = 5;
+  uint32 limit = 6;
+  uint32 offset = 7;
+}
+
+message ContextPair {
+  string positive_id = 1;
+  string negative_id = 2;
+}
+
+message DiscoverResponse {
+  repeated QueryResult results = 1;
+}
+
+message ScrollRequest {
+  string collection_name = 1;
+  optional string filter_json = 2;
+  uint32 limit = 3;
+  optional string offset = 4;
+  bool with_vectors = 5;
+  bool with_payload = 6;
+}
+
+message ScoredPoint {
+  string id = 1;
+  float score = 2;
+  repeated float vector = 3;
+  map<string, string> payload = 4;
+}
+
+message ScrollResponse {
+  repeated ScoredPoint points = 1;
+  optional string next_offset = 2;
+}
+
+message CountRequest {
+  string collection_name = 1;
+  optional string filter_json = 2;
+  bool exact = 3;
+}
+
+message CountResponse {
+  uint64 count = 1;
+}
+
+message BatchSearchRequest {
+  string collection_name = 1;
+  repeated SearchQuery searches = 2;
+}
+
+message SearchQuery {
+  repeated float vector = 1;
+  optional string filter_json = 2;
+  uint32 limit = 3;
+  uint32 offset = 4;
+}
+
+message BatchSearchResponse {
+  repeated QueryResults results = 1;
+}
+
+message QueryResults {
+  repeated QueryResult results = 1;
+}
+
+// Snapshot operations
+
+message CreateSnapshotRequest {
+  string collection_name = 1;
+}
+
+message SnapshotMetadata {
+  string name = 1;
+  string collection = 2;
+  uint64 created_at = 3;
+  uint64 size_bytes = 4;
+  uint64 vector_count = 5;
+  string checksum = 6;
+}
+
+message CreateSnapshotResponse {
+  SnapshotMetadata metadata = 1;
+}
+
+message ListSnapshotsRequest {
+  string collection_name = 1;
+}
+
+message ListSnapshotsResponse {
+  repeated SnapshotMetadata snapshots = 1;
+}
+
+message GetSnapshotRequest {
+  string collection_name = 1;
+  string snapshot_name = 2;
+}
+
+message GetSnapshotResponse {
+  SnapshotMetadata metadata = 1;
+}
+
+message DeleteSnapshotRequest {
+  string collection_name = 1;
+  string snapshot_name = 2;
+}
+
+message DeleteSnapshotResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RestoreSnapshotRequest {
+  string collection_name = 1;
+  string snapshot_name = 2;
+}
+
+message RestoreSnapshotResponse {
+  bool success = 1;
+  string message = 2;
 }
