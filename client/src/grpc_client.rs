@@ -420,4 +420,377 @@ impl VectorDbClient for GrpcClient {
             Err(_) => Ok(false),
         }
     }
+
+    // Advanced Search APIs
+
+    #[instrument(skip(self))]
+    async fn recommend(&self, request: &vectordb_common::search_api::RecommendRequest) -> Result<Vec<QueryResult>> {
+        let proto_request = vectordb_proto::RecommendRequest {
+            collection_name: request.collection.clone(),
+            positive_ids: request.positive.iter().map(|id| id.to_string()).collect(),
+            negative_ids: request.negative.iter().map(|id| id.to_string()).collect(),
+            filter_json: request.filter.as_ref().map(|f| serde_json::to_string(f).unwrap_or_default()),
+            limit: request.limit as u32,
+            offset: request.offset as u32,
+            strategy: match request.strategy {
+                vectordb_common::search_api::RecommendStrategy::AverageVector => "average_vector".to_string(),
+                vectordb_common::search_api::RecommendStrategy::BestScore => "best_score".to_string(),
+            },
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.recommend(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let results = response
+            .results
+            .into_iter()
+            .map(|r| {
+                let id = Uuid::parse_str(&r.id).map_err(|_| VectorDbError::Internal {
+                    message: format!("Invalid UUID in response: {}", r.id),
+                })?;
+
+                let metadata = if r.metadata.is_empty() {
+                    None
+                } else {
+                    Some(
+                        r.metadata
+                            .into_iter()
+                            .map(|(k, v)| (k, serde_json::Value::String(v)))
+                            .collect(),
+                    )
+                };
+
+                Ok(QueryResult {
+                    id,
+                    distance: r.distance,
+                    metadata,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(results)
+    }
+
+    #[instrument(skip(self))]
+    async fn discover(&self, request: &vectordb_common::search_api::DiscoveryRequest) -> Result<Vec<QueryResult>> {
+        use vectordb_proto::discover_request::Target;
+
+        let target = match &request.target {
+            vectordb_common::search_api::DiscoveryTarget::VectorId(id) => {
+                Some(Target::TargetId(id.to_string()))
+            }
+            vectordb_common::search_api::DiscoveryTarget::Vector(vec) => {
+                Some(Target::TargetVector(vec.clone()))
+            }
+        };
+
+        let proto_request = vectordb_proto::DiscoverRequest {
+            collection_name: request.collection.clone(),
+            target,
+            context_pairs: request
+                .context
+                .iter()
+                .map(|pair| vectordb_proto::ContextPair {
+                    positive_id: pair.positive.to_string(),
+                    negative_id: pair.negative.to_string(),
+                })
+                .collect(),
+            filter_json: request.filter.as_ref().map(|f| serde_json::to_string(f).unwrap_or_default()),
+            limit: request.limit as u32,
+            offset: request.offset as u32,
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.discover(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let results = response
+            .results
+            .into_iter()
+            .map(|r| {
+                let id = Uuid::parse_str(&r.id).map_err(|_| VectorDbError::Internal {
+                    message: format!("Invalid UUID in response: {}", r.id),
+                })?;
+
+                let metadata = if r.metadata.is_empty() {
+                    None
+                } else {
+                    Some(
+                        r.metadata
+                            .into_iter()
+                            .map(|(k, v)| (k, serde_json::Value::String(v)))
+                            .collect(),
+                    )
+                };
+
+                Ok(QueryResult {
+                    id,
+                    distance: r.distance,
+                    metadata,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(results)
+    }
+
+    #[instrument(skip(self))]
+    async fn scroll(&self, request: &vectordb_common::search_api::ScrollRequest) -> Result<vectordb_common::search_api::ScrollResponse> {
+        let proto_request = vectordb_proto::ScrollRequest {
+            collection_name: request.collection.clone(),
+            filter_json: request.filter.as_ref().map(|f| serde_json::to_string(f).unwrap_or_default()),
+            limit: request.limit as u32,
+            offset: request.offset.clone(),
+            with_vectors: request.with_vectors,
+            with_payload: request.with_payload,
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.scroll(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let points = response
+            .points
+            .into_iter()
+            .map(|p| {
+                let id = Uuid::parse_str(&p.id).map_err(|_| VectorDbError::Internal {
+                    message: format!("Invalid UUID in response: {}", p.id),
+                })?;
+
+                let payload = if p.payload.is_empty() {
+                    None
+                } else {
+                    Some(
+                        p.payload
+                            .into_iter()
+                            .map(|(k, v)| (k, serde_json::Value::String(v)))
+                            .collect(),
+                    )
+                };
+
+                Ok(vectordb_common::search_api::ScoredPoint {
+                    id,
+                    score: p.score,
+                    vector: if p.vector.is_empty() { None } else { Some(p.vector) },
+                    payload,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(vectordb_common::search_api::ScrollResponse {
+            points,
+            next_offset: response.next_offset,
+        })
+    }
+
+    #[instrument(skip(self))]
+    async fn count(&self, request: &vectordb_common::search_api::CountRequest) -> Result<vectordb_common::search_api::CountResponse> {
+        let proto_request = vectordb_proto::CountRequest {
+            collection_name: request.collection.clone(),
+            filter_json: request.filter.as_ref().map(|f| serde_json::to_string(f).unwrap_or_default()),
+            exact: request.exact,
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.count(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        Ok(vectordb_common::search_api::CountResponse {
+            count: response.count as usize,
+        })
+    }
+
+    #[instrument(skip(self))]
+    async fn batch_search(&self, request: &vectordb_common::search_api::BatchSearchRequest) -> Result<Vec<Vec<QueryResult>>> {
+        let proto_request = vectordb_proto::BatchSearchRequest {
+            collection_name: request.collection.clone(),
+            searches: request
+                .searches
+                .iter()
+                .map(|s| vectordb_proto::SearchQuery {
+                    vector: s.vector.clone(),
+                    filter_json: s.filter.as_ref().map(|f| serde_json::to_string(f).unwrap_or_default()),
+                    limit: s.limit as u32,
+                    offset: s.offset as u32,
+                })
+                .collect(),
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.batch_search(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let batch_results = response
+            .results
+            .into_iter()
+            .map(|query_results| {
+                query_results
+                    .results
+                    .into_iter()
+                    .map(|r| {
+                        let id = Uuid::parse_str(&r.id).map_err(|_| VectorDbError::Internal {
+                            message: format!("Invalid UUID in response: {}", r.id),
+                        })?;
+
+                        let metadata = if r.metadata.is_empty() {
+                            None
+                        } else {
+                            Some(
+                                r.metadata
+                                    .into_iter()
+                                    .map(|(k, v)| (k, serde_json::Value::String(v)))
+                                    .collect(),
+                            )
+                        };
+
+                        Ok(QueryResult {
+                            id,
+                            distance: r.distance,
+                            metadata,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(batch_results)
+    }
+
+    // Snapshot Management APIs
+
+    #[instrument(skip(self))]
+    async fn create_snapshot(&self, collection: &str) -> Result<vectordb_storage::SnapshotMetadata> {
+        let proto_request = vectordb_proto::CreateSnapshotRequest {
+            collection_name: collection.to_string(),
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.create_snapshot(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let metadata = response.metadata.ok_or_else(|| VectorDbError::Internal {
+            message: "Missing snapshot metadata in response".to_string(),
+        })?;
+
+        Ok(vectordb_storage::SnapshotMetadata {
+            name: metadata.name,
+            collection: metadata.collection,
+            created_at: metadata.created_at,
+            size_bytes: metadata.size_bytes,
+            vector_count: metadata.vector_count as usize,
+            checksum: metadata.checksum,
+        })
+    }
+
+    #[instrument(skip(self))]
+    async fn list_snapshots(&self, collection: &str) -> Result<Vec<vectordb_storage::SnapshotMetadata>> {
+        let proto_request = vectordb_proto::ListSnapshotsRequest {
+            collection_name: collection.to_string(),
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.list_snapshots(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let snapshots = response
+            .snapshots
+            .into_iter()
+            .map(|metadata| vectordb_storage::SnapshotMetadata {
+                name: metadata.name,
+                collection: metadata.collection,
+                created_at: metadata.created_at,
+                size_bytes: metadata.size_bytes,
+                vector_count: metadata.vector_count as usize,
+                checksum: metadata.checksum,
+            })
+            .collect();
+
+        Ok(snapshots)
+    }
+
+    #[instrument(skip(self))]
+    async fn get_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<vectordb_storage::SnapshotMetadata> {
+        let proto_request = vectordb_proto::GetSnapshotRequest {
+            collection_name: collection.to_string(),
+            snapshot_name: snapshot_name.to_string(),
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.get_snapshot(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        let metadata = response.metadata.ok_or_else(|| VectorDbError::Internal {
+            message: "Missing snapshot metadata in response".to_string(),
+        })?;
+
+        Ok(vectordb_storage::SnapshotMetadata {
+            name: metadata.name,
+            collection: metadata.collection,
+            created_at: metadata.created_at,
+            size_bytes: metadata.size_bytes,
+            vector_count: metadata.vector_count as usize,
+            checksum: metadata.checksum,
+        })
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<()> {
+        let proto_request = vectordb_proto::DeleteSnapshotRequest {
+            collection_name: collection.to_string(),
+            snapshot_name: snapshot_name.to_string(),
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.delete_snapshot(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        if !response.success {
+            return Err(VectorDbError::Internal {
+                message: response.message,
+            });
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn restore_snapshot(&self, collection: &str, snapshot_name: &str) -> Result<()> {
+        let proto_request = vectordb_proto::RestoreSnapshotRequest {
+            collection_name: collection.to_string(),
+            snapshot_name: snapshot_name.to_string(),
+        };
+
+        let response = self.with_retry(|| async {
+            let mut client = self.client.clone();
+            client.restore_snapshot(Request::new(proto_request.clone())).await
+        }).await?;
+
+        let response = response.into_inner();
+        if !response.success {
+            return Err(VectorDbError::Internal {
+                message: response.message,
+            });
+        }
+
+        Ok(())
+    }
 }
