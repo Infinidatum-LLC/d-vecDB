@@ -5,6 +5,7 @@ pub mod discovery;
 pub mod failover;
 pub mod router;
 pub mod types;
+pub mod sharding;
 
 pub use manager::ClusterManager;
 pub use node::{Node, NodeId, NodeRole, NodeInfo};
@@ -13,6 +14,7 @@ pub use discovery::DiscoveryProtocol;
 pub use failover::FailoverManager;
 pub use router::QueryRouter;
 pub use types::*;
+pub use sharding::*;
 
 /// Cluster configuration
 #[derive(Debug, Clone)]

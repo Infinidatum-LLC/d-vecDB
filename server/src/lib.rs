@@ -3,6 +3,7 @@ pub mod rest;
 pub mod config;
 pub mod metrics;
 pub mod health;
+pub mod auth;
 
 use vectordb_vectorstore::VectorStore;
 use std::sync::Arc;
@@ -14,6 +15,7 @@ pub use grpc::*;
 pub use rest::*;
 pub use metrics::*;
 pub use health::*;
+pub use auth::*;
 
 /// Main server application
 pub struct VectorDbServer {

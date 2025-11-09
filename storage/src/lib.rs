@@ -1,6 +1,7 @@
 pub mod wal;
 pub mod mmap;
 pub mod recovery;
+pub mod snapshot;
 
 use vectordb_common::{Result, VectorDbError};
 use vectordb_common::types::*;
@@ -12,6 +13,7 @@ use parking_lot::RwLock;
 pub use wal::*;
 pub use mmap::*;
 pub use recovery::*;
+pub use snapshot::*;
 
 /// Storage engine for persistent vector storage with WAL
 pub struct StorageEngine {

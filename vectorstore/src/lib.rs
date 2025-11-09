@@ -221,13 +221,13 @@ impl VectorStore {
     pub async fn query(&self, request: &QueryRequest) -> Result<Vec<QueryResult>> {
         let start = std::time::Instant::now();
         counter!("vectorstore.queries").increment(1);
-        
+
         // Validate collection exists
         let config = self.get_collection_config(&request.collection)?
             .ok_or_else(|| VectorDbError::CollectionNotFound {
                 name: request.collection.clone(),
             })?;
-        
+
         // Validate query vector dimension
         if request.vector.len() != config.dimension {
             return Err(VectorDbError::InvalidDimension {
@@ -235,18 +235,37 @@ impl VectorStore {
                 actual: request.vector.len(),
             });
         }
-        
+
         // Search index - DashMap provides lock-free reads
         let index = self.indexes
             .get(&request.collection)
             .ok_or_else(|| VectorDbError::CollectionNotFound {
                 name: request.collection.clone(),
             })?;
-        
-        let search_results = index.search(&request.vector, request.limit, request.ef_search)?;
-        
+
+        // If filter is present, search with larger candidate pool for post-filtering
+        let search_limit = if request.filter.is_some() {
+            // Search more candidates to account for filtering
+            request.limit * 3
+        } else {
+            request.limit
+        };
+
+        let search_results = index.search(&request.vector, search_limit, request.ef_search)?;
+
+        // Apply payload filter if present
+        let filtered_results = if let Some(filter) = &request.filter {
+            search_results
+                .into_iter()
+                .filter(|r| vectordb_common::filter::evaluate_filter(filter, &r.metadata))
+                .take(request.limit)
+                .collect()
+        } else {
+            search_results.into_iter().take(request.limit).collect()
+        };
+
         // Convert to QueryResult
-        let results: Vec<QueryResult> = search_results
+        let results: Vec<QueryResult> = filtered_results
             .into_iter()
             .map(|r| QueryResult {
                 id: r.id,
@@ -254,7 +273,7 @@ impl VectorStore {
                 metadata: r.metadata,
             })
             .collect();
-        
+
         histogram!("vectorstore.query.duration").record(start.elapsed().as_secs_f64());
         histogram!("vectorstore.query.results").record(results.len() as f64);
         Ok(results)

@@ -160,8 +160,7 @@ pub struct QueryRequest {
     pub vector: Vec<f32>,
     pub limit: usize,
     pub ef_search: Option<usize>,
-    #[serde(with = "metadata_serde")]
-    pub filter: Option<HashMap<String, serde_json::Value>>,
+    pub filter: Option<crate::filter::Filter>,
 }
 
 /// Query result
