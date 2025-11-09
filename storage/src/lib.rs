@@ -348,6 +348,16 @@ impl StorageEngine {
         Ok(())
     }
 
+    /// Get the data directory path
+    pub fn get_data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    /// Get collection directory path
+    pub fn get_collection_dir(&self, collection: &str) -> Result<PathBuf> {
+        Ok(self.data_dir.join(collection))
+    }
+
     async fn recover(&mut self) -> Result<()> {
         let recovery = RecoveryManager::new(&self.data_dir);
         let operations = recovery.recover_from_wal(&self.wal).await?;

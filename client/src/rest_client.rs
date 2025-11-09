@@ -143,6 +143,7 @@ impl VectorDbClient for RestClient {
             distance_metric: DistanceMetric,
             vector_type: VectorType,
             index_config: Option<IndexConfig>,
+            quantization: Option<vectordb_common::quantization::QuantizationConfig>,
         }
 
         let request_body = CreateCollectionRequest {
@@ -151,6 +152,7 @@ impl VectorDbClient for RestClient {
             distance_metric: config.distance_metric,
             vector_type: config.vector_type,
             index_config: Some(config.index_config.clone()),
+            quantization: config.quantization.clone(),
         };
 
         let request = self.client

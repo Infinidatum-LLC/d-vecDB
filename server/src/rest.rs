@@ -51,6 +51,7 @@ struct CreateCollectionRequest {
     distance_metric: DistanceMetric,
     vector_type: VectorType,
     index_config: Option<IndexConfig>,
+    quantization: Option<vectordb_common::quantization::QuantizationConfig>,
 }
 
 /// Collection creation response
@@ -119,6 +120,7 @@ async fn create_collection(
         distance_metric: payload.distance_metric,
         vector_type: payload.vector_type,
         index_config: payload.index_config.unwrap_or_default(),
+        quantization: payload.quantization,
     };
 
     match state.create_collection(&config).await {
@@ -546,6 +548,176 @@ async fn cleanup_old_deleted(
     }
 }
 
+// ==================== Advanced Search Handlers ====================
+
+/// Recommend points based on positive and negative examples
+#[instrument(skip(state))]
+async fn recommend_points(
+    State(state): State<AppState>,
+    Path(collection): Path<String>,
+    Json(mut request): Json<vectordb_common::RecommendRequest>,
+) -> Result<Json<ApiResponse<Vec<QueryResult>>>, StatusCode> {
+    request.collection = collection;
+
+    match state.recommend(&request).await {
+        Ok(results) => Ok(Json(ApiResponse::success(results))),
+        Err(e) => {
+            error!("Failed to execute recommend: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Discovery search - find vectors in direction of context
+#[instrument(skip(state))]
+async fn discover_points(
+    State(state): State<AppState>,
+    Path(collection): Path<String>,
+    Json(mut request): Json<vectordb_common::DiscoveryRequest>,
+) -> Result<Json<ApiResponse<Vec<QueryResult>>>, StatusCode> {
+    request.collection = collection;
+
+    match state.discover(&request).await {
+        Ok(results) => Ok(Json(ApiResponse::success(results))),
+        Err(e) => {
+            error!("Failed to execute discover: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Scroll through points with pagination
+#[instrument(skip(state))]
+async fn scroll_points(
+    State(state): State<AppState>,
+    Path(collection): Path<String>,
+    Json(mut request): Json<vectordb_common::ScrollRequest>,
+) -> Result<Json<ApiResponse<vectordb_common::ScrollResponse>>, StatusCode> {
+    request.collection = collection;
+
+    match state.scroll(&request).await {
+        Ok(response) => Ok(Json(ApiResponse::success(response))),
+        Err(e) => {
+            error!("Failed to execute scroll: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Count points matching filter
+#[instrument(skip(state))]
+async fn count_points(
+    State(state): State<AppState>,
+    Path(collection): Path<String>,
+    Json(mut request): Json<vectordb_common::CountRequest>,
+) -> Result<Json<ApiResponse<vectordb_common::CountResponse>>, StatusCode> {
+    request.collection = collection;
+
+    match state.count(&request).await {
+        Ok(response) => Ok(Json(ApiResponse::success(response))),
+        Err(e) => {
+            error!("Failed to execute count: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Batch search - multiple queries in one request
+#[instrument(skip(state))]
+async fn batch_search_points(
+    State(state): State<AppState>,
+    Path(collection): Path<String>,
+    Json(mut request): Json<vectordb_common::BatchSearchRequest>,
+) -> Result<Json<ApiResponse<Vec<Vec<QueryResult>>>>, StatusCode> {
+    request.collection = collection;
+
+    match state.batch_search(&request).await {
+        Ok(results) => Ok(Json(ApiResponse::success(results))),
+        Err(e) => {
+            error!("Failed to execute batch search: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+// ==================== Snapshot Handlers ====================
+
+#[derive(Serialize, Debug)]
+struct SnapshotCreatedResponse {
+    snapshot_name: String,
+    collection: String,
+    size_bytes: u64,
+    message: String,
+}
+
+/// Create a snapshot of a collection
+#[instrument(skip(state))]
+async fn create_snapshot(
+    State(state): State<AppState>,
+    Path(collection): Path<String>,
+) -> Result<Json<ApiResponse<SnapshotCreatedResponse>>, StatusCode> {
+    match state.create_snapshot(&collection).await {
+        Ok(metadata) => Ok(Json(ApiResponse::success(SnapshotCreatedResponse {
+            snapshot_name: metadata.name.clone(),
+            collection: metadata.collection,
+            size_bytes: metadata.size_bytes,
+            message: "Snapshot created successfully".to_string(),
+        }))),
+        Err(e) => {
+            error!("Failed to create snapshot: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// List all snapshots
+#[instrument(skip(state))]
+async fn list_snapshots_handler(
+    State(state): State<AppState>,
+    Path(_collection): Path<String>,
+) -> Result<Json<ApiResponse<Vec<vectordb_storage::SnapshotMetadata>>>, StatusCode> {
+    match state.list_snapshots() {
+        Ok(snapshots) => Ok(Json(ApiResponse::success(snapshots))),
+        Err(e) => {
+            error!("Failed to list snapshots: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Get snapshot info
+#[instrument(skip(state))]
+async fn get_snapshot_handler(
+    State(state): State<AppState>,
+    Path((_collection, snapshot_id)): Path<(String, String)>,
+) -> Result<Json<ApiResponse<vectordb_storage::SnapshotMetadata>>, StatusCode> {
+    match state.get_snapshot(&snapshot_id) {
+        Ok(snapshot) => Ok(Json(ApiResponse::success(snapshot))),
+        Err(e) => {
+            error!("Failed to get snapshot: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+/// Delete a snapshot
+#[instrument(skip(state))]
+async fn delete_snapshot_handler(
+    State(state): State<AppState>,
+    Path((_collection, snapshot_id)): Path<(String, String)>,
+) -> Result<Json<ApiResponse<String>>, StatusCode> {
+    match state.delete_snapshot(&snapshot_id) {
+        Ok(()) => Ok(Json(ApiResponse::success(format!(
+            "Snapshot '{}' deleted successfully",
+            snapshot_id
+        )))),
+        Err(e) => {
+            error!("Failed to delete snapshot: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
 /// Create REST API router
 pub fn create_router(state: AppState) -> Router {
     use crate::health;
@@ -572,6 +744,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/collections/:collection/vectors/:vector_id", get(get_vector))
         .route("/collections/:collection/vectors/:vector_id", put(update_vector))
         .route("/collections/:collection/vectors/:vector_id", delete(delete_vector))
+
+        // Advanced search operations
+        .route("/collections/:collection/points/recommend", post(recommend_points))
+        .route("/collections/:collection/points/discover", post(discover_points))
+        .route("/collections/:collection/points/scroll", post(scroll_points))
+        .route("/collections/:collection/points/count", post(count_points))
+        .route("/collections/:collection/points/search/batch", post(batch_search_points))
+
+        // Snapshot operations
+        .route("/collections/:collection/snapshots", post(create_snapshot))
+        .route("/collections/:collection/snapshots", get(list_snapshots_handler))
+        .route("/collections/:collection/snapshots/:snapshot_id", get(get_snapshot_handler))
+        .route("/collections/:collection/snapshots/:snapshot_id", delete(delete_snapshot_handler))
 
         // Server operations
         .route("/stats", get(get_stats))

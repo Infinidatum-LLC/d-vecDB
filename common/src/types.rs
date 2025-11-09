@@ -131,6 +131,9 @@ pub struct CollectionConfig {
     pub distance_metric: DistanceMetric,
     pub vector_type: VectorType,
     pub index_config: IndexConfig,
+    /// Optional quantization configuration for memory reduction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantization: Option<crate::quantization::QuantizationConfig>,
 }
 
 /// HNSW index configuration

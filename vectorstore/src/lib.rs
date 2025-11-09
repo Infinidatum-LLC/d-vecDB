@@ -254,7 +254,7 @@ impl VectorStore {
         let search_results = index.search(&request.vector, search_limit, request.ef_search)?;
 
         // Apply payload filter if present
-        let filtered_results = if let Some(filter) = &request.filter {
+        let filtered_results: Vec<vectordb_index::SearchResult> = if let Some(filter) = &request.filter {
             search_results
                 .into_iter()
                 .filter(|r| vectordb_common::filter::evaluate_filter(filter, &r.metadata))
@@ -278,7 +278,236 @@ impl VectorStore {
         histogram!("vectorstore.query.results").record(results.len() as f64);
         Ok(results)
     }
-    
+
+    /// Recommend vectors based on positive and negative examples
+    pub async fn recommend(&self, request: &vectordb_common::RecommendRequest) -> Result<Vec<QueryResult>> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.recommend").increment(1);
+
+        // Get positive example vectors
+        let mut positive_vectors = Vec::new();
+        for id in &request.positive {
+            if let Some(vector) = self.get(&request.collection, id).await? {
+                positive_vectors.push(vector.data);
+            }
+        }
+
+        if positive_vectors.is_empty() {
+            return Err(VectorDbError::NotFound {
+                message: "No positive examples found".to_string(),
+            });
+        }
+
+        // Get negative example vectors
+        let mut negative_vectors = Vec::new();
+        for id in &request.negative {
+            if let Some(vector) = self.get(&request.collection, id).await? {
+                negative_vectors.push(vector.data);
+            }
+        }
+
+        // Compute recommendation vector
+        let query_vector = vectordb_common::compute_recommendation_vector(
+            &positive_vectors,
+            &negative_vectors,
+        )
+        .ok_or_else(|| VectorDbError::InvalidInput {
+            message: "Failed to compute recommendation vector".to_string(),
+        })?;
+
+        // Execute search with computed vector
+        let query_request = QueryRequest {
+            collection: request.collection.clone(),
+            vector: query_vector,
+            limit: request.limit + request.offset,
+            ef_search: None,
+            filter: request.filter.clone(),
+        };
+
+        let mut results = self.query(&query_request).await?;
+
+        // Apply offset and limit
+        if request.offset > 0 {
+            results = results.into_iter().skip(request.offset).collect();
+        }
+        results.truncate(request.limit);
+
+        histogram!("vectorstore.recommend.duration").record(start.elapsed().as_secs_f64());
+        Ok(results)
+    }
+
+    /// Discovery search - find vectors in the direction of positive/negative context
+    pub async fn discover(&self, request: &vectordb_common::DiscoveryRequest) -> Result<Vec<QueryResult>> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.discover").increment(1);
+
+        // Get target vector
+        let target_vector = match &request.target {
+            vectordb_common::DiscoveryTarget::VectorId(id) => {
+                let vector = self.get(&request.collection, id).await?
+                    .ok_or_else(|| VectorDbError::NotFound {
+                        message: format!("Target vector not found: {}", id),
+                    })?;
+                vector.data
+            }
+            vectordb_common::DiscoveryTarget::Vector(v) => v.clone(),
+        };
+
+        // Get context pairs
+        let mut context_vectors = Vec::new();
+        for pair in &request.context {
+            let positive = self.get(&request.collection, &pair.positive).await?
+                .ok_or_else(|| VectorDbError::NotFound {
+                    message: format!("Positive vector not found: {}", pair.positive),
+                })?;
+
+            let negative = self.get(&request.collection, &pair.negative).await?
+                .ok_or_else(|| VectorDbError::NotFound {
+                    message: format!("Negative vector not found: {}", pair.negative),
+                })?;
+
+            context_vectors.push((positive.data, negative.data));
+        }
+
+        // Compute discovery direction
+        let query_vector = vectordb_common::compute_discovery_direction(
+            &target_vector,
+            &context_vectors,
+        )
+        .ok_or_else(|| VectorDbError::InvalidInput {
+            message: "Failed to compute discovery direction".to_string(),
+        })?;
+
+        // Execute search
+        let query_request = QueryRequest {
+            collection: request.collection.clone(),
+            vector: query_vector,
+            limit: request.limit + request.offset,
+            ef_search: None,
+            filter: request.filter.clone(),
+        };
+
+        let mut results = self.query(&query_request).await?;
+
+        // Apply offset
+        if request.offset > 0 {
+            results = results.into_iter().skip(request.offset).collect();
+        }
+        results.truncate(request.limit);
+
+        histogram!("vectorstore.discover.duration").record(start.elapsed().as_secs_f64());
+        Ok(results)
+    }
+
+    /// Scroll through all vectors in a collection
+    pub async fn scroll(&self, request: &vectordb_common::ScrollRequest) -> Result<vectordb_common::ScrollResponse> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.scroll").increment(1);
+
+        // Parse offset (simple index-based for now)
+        let offset = request.offset.as_ref()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        // Get all vectors from storage
+        let all_vectors = self.storage.get_all_vectors(&request.collection).await?;
+
+        // Apply filter if present
+        let filtered_vectors: Vec<_> = if let Some(filter) = &request.filter {
+            all_vectors.into_iter()
+                .filter(|v| vectordb_common::filter::evaluate_filter(filter, &v.metadata))
+                .collect()
+        } else {
+            all_vectors
+        };
+
+        // Apply pagination
+        let total = filtered_vectors.len();
+        let end = (offset + request.limit).min(total);
+        let page_vectors: Vec<_> = filtered_vectors.into_iter()
+            .skip(offset)
+            .take(request.limit)
+            .collect();
+
+        // Convert to ScoredPoint
+        let points: Vec<vectordb_common::ScoredPoint> = page_vectors.into_iter()
+            .map(|v| vectordb_common::ScoredPoint {
+                id: v.id,
+                score: 0.0, // Scroll doesn't have scores
+                vector: if request.with_vectors { Some(v.data) } else { None },
+                payload: if request.with_payload { v.metadata } else { None },
+            })
+            .collect();
+
+        // Compute next offset
+        let next_offset = if end < total {
+            Some(end.to_string())
+        } else {
+            None
+        };
+
+        histogram!("vectorstore.scroll.duration").record(start.elapsed().as_secs_f64());
+
+        Ok(vectordb_common::ScrollResponse {
+            points,
+            next_offset,
+        })
+    }
+
+    /// Count vectors matching a filter
+    pub async fn count(&self, request: &vectordb_common::CountRequest) -> Result<vectordb_common::CountResponse> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.count").increment(1);
+
+        let count = if let Some(filter) = &request.filter {
+            // Get all vectors and filter
+            let all_vectors = self.storage.get_all_vectors(&request.collection).await?;
+            all_vectors.into_iter()
+                .filter(|v| vectordb_common::filter::evaluate_filter(filter, &v.metadata))
+                .count()
+        } else {
+            // No filter - just get total count from stats
+            self.get_collection_stats(&request.collection).await?
+                .map(|s| s.vector_count)
+                .unwrap_or(0)
+        };
+
+        histogram!("vectorstore.count.duration").record(start.elapsed().as_secs_f64());
+
+        Ok(vectordb_common::CountResponse { count })
+    }
+
+    /// Batch search - multiple queries in one request
+    pub async fn batch_search(&self, request: &vectordb_common::BatchSearchRequest) -> Result<Vec<Vec<QueryResult>>> {
+        let start = std::time::Instant::now();
+        counter!("vectorstore.batch_search").increment(1);
+
+        let mut all_results = Vec::new();
+
+        for search in &request.searches {
+            let query_request = QueryRequest {
+                collection: request.collection.clone(),
+                vector: search.vector.clone(),
+                limit: search.limit + search.offset,
+                ef_search: None,
+                filter: search.filter.clone(),
+            };
+
+            let mut results = self.query(&query_request).await?;
+
+            // Apply offset
+            if search.offset > 0 {
+                results = results.into_iter().skip(search.offset).collect();
+            }
+            results.truncate(search.limit);
+
+            all_results.push(results);
+        }
+
+        histogram!("vectorstore.batch_search.duration").record(start.elapsed().as_secs_f64());
+        Ok(all_results)
+    }
+
     /// Delete a vector
     pub async fn delete(&self, collection: &str, id: &VectorId) -> Result<bool> {
         counter!("vectorstore.vectors.deleted").increment(1);
@@ -422,6 +651,89 @@ impl VectorStore {
             disk_usage: 0, // TODO: Calculate actual disk usage
             uptime_seconds: 0, // TODO: Track server uptime
         })
+    }
+
+    /// Get snapshot manager
+    pub fn get_snapshot_manager(&self) -> Result<vectordb_storage::SnapshotManager> {
+        let data_dir = self.storage.get_data_dir();
+        vectordb_storage::SnapshotManager::new(data_dir)
+            .map_err(|e| VectorDbError::StorageError {
+                message: format!("Failed to create snapshot manager: {}", e),
+            })
+    }
+
+    /// Create a snapshot of a collection
+    pub async fn create_snapshot(&self, collection_name: &str) -> Result<vectordb_storage::SnapshotMetadata> {
+        info!("Creating snapshot for collection: {}", collection_name);
+
+        // Verify collection exists
+        self.get_collection_config(collection_name)?
+            .ok_or_else(|| VectorDbError::CollectionNotFound {
+                name: collection_name.to_string(),
+            })?;
+
+        let snapshot_manager = self.get_snapshot_manager()?;
+        let collection_dir = self.storage.get_collection_dir(collection_name)?;
+
+        snapshot_manager.create_snapshot(collection_name, &collection_dir).await
+    }
+
+    /// List all snapshots
+    pub fn list_snapshots(&self) -> Result<Vec<vectordb_storage::SnapshotMetadata>> {
+        let snapshot_manager = self.get_snapshot_manager()?;
+        snapshot_manager.list_snapshots()
+    }
+
+    /// Get snapshot by name
+    pub fn get_snapshot(&self, snapshot_name: &str) -> Result<vectordb_storage::SnapshotMetadata> {
+        let snapshot_manager = self.get_snapshot_manager()?;
+        snapshot_manager.get_snapshot(snapshot_name)
+    }
+
+    /// Delete a snapshot
+    pub fn delete_snapshot(&self, snapshot_name: &str) -> Result<()> {
+        let snapshot_manager = self.get_snapshot_manager()?;
+        snapshot_manager.delete_snapshot(snapshot_name)
+    }
+
+    /// Restore collection from snapshot
+    pub async fn restore_snapshot(&self, snapshot_name: &str, target_collection: Option<&str>) -> Result<String> {
+        info!("Restoring snapshot: {}", snapshot_name);
+
+        let snapshot_manager = self.get_snapshot_manager()?;
+        let snapshot = snapshot_manager.get_snapshot(snapshot_name)?;
+
+        let collection_name = target_collection.unwrap_or(&snapshot.collection);
+        let target_dir = self.storage.get_collection_dir(collection_name)?;
+
+        snapshot_manager.restore_snapshot(snapshot_name, &target_dir).await?;
+
+        // Rebuild index for restored collection
+        if let Some(config) = self.storage.get_collection_config(collection_name)? {
+            let index = Box::new(vectordb_index::HnswRsIndex::new(
+                config.index_config.clone(),
+                config.distance_metric,
+                config.dimension,
+            ));
+            self.indexes.insert(collection_name.to_string(), index);
+
+            // Load vectors and rebuild index
+            if let Ok(vectors) = self.storage.get_all_vectors(collection_name).await {
+                if let Some(mut index) = self.indexes.get_mut(collection_name) {
+                    let vectors_to_insert: Vec<(uuid::Uuid, Vec<f32>, Option<_>)> = vectors
+                        .iter()
+                        .map(|v| (v.id, v.data.clone(), v.metadata.clone()))
+                        .collect();
+
+                    if !vectors_to_insert.is_empty() {
+                        let _ = index.batch_insert(vectors_to_insert);
+                    }
+                }
+            }
+        }
+
+        info!("Snapshot restored successfully: {}", collection_name);
+        Ok(collection_name.to_string())
     }
 }
 

@@ -37,6 +37,18 @@ pub enum VectorDbError {
     #[error("Configuration error: {message}")]
     ConfigError { message: String },
 
+    #[error("Configuration error: {message}")]
+    Configuration { message: String },
+
+    #[error("Invalid input: {message}")]
+    InvalidInput { message: String },
+
+    #[error("Not found: {message}")]
+    NotFound { message: String },
+
+    #[error("Data corruption: {message}")]
+    Corruption { message: String },
+
     #[error("Internal error: {message}")]
     Internal { message: String },
 }

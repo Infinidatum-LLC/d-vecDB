@@ -99,7 +99,7 @@ impl QuantizedVector {
             .iter()
             .map(|&v| {
                 let normalized = ((v - min) * scale) as i32;
-                (normalized.clamp(0, 255) as i8).wrapping_sub(128)
+                (normalized.clamp(0, 255) as i32 - 128) as i8
             })
             .collect();
 
@@ -116,7 +116,7 @@ impl QuantizedVector {
                 codes
                     .iter()
                     .map(|&code| {
-                        let normalized = (code.wrapping_add(128)) as f32;
+                        let normalized = (code as i32 + 128) as f32;
                         min + normalized * scale
                     })
                     .collect()

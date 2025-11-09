@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use vectordb_common::{Result, VectorDbError};
@@ -45,9 +45,7 @@ impl SnapshotManager {
         let snapshot_dir = self.snapshots_dir.join(&snapshot_name);
 
         // Create snapshot directory
-        fs::create_dir_all(&snapshot_dir).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to create snapshot directory: {}", e),
-        })?;
+        fs::create_dir_all(&snapshot_dir).map_err(VectorDbError::from)?;
 
         // Copy collection files
         let mut total_size = 0u64;
@@ -56,27 +54,21 @@ impl SnapshotManager {
         // Copy vectors.bin
         if let Ok(src) = collection_dir.join("vectors.bin").canonicalize() {
             let dst = snapshot_dir.join("vectors.bin");
-            fs::copy(&src, &dst).map_err(|e| VectorDbError::Io {
-                message: format!("Failed to copy vectors.bin: {}", e),
-            })?;
+            fs::copy(&src, &dst).map_err(VectorDbError::from)?;
             total_size += fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
         }
 
         // Copy WAL
         if let Ok(src) = collection_dir.join("wal.log").canonicalize() {
             let dst = snapshot_dir.join("wal.log");
-            fs::copy(&src, &dst).map_err(|e| VectorDbError::Io {
-                message: format!("Failed to copy wal.log: {}", e),
-            })?;
+            fs::copy(&src, &dst).map_err(VectorDbError::from)?;
             total_size += fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
         }
 
         // Copy metadata
         if let Ok(src) = collection_dir.join("metadata.json").canonicalize() {
             let dst = snapshot_dir.join("metadata.json");
-            fs::copy(&src, &dst).map_err(|e| VectorDbError::Io {
-                message: format!("Failed to copy metadata.json: {}", e),
-            })?;
+            fs::copy(&src, &dst).map_err(VectorDbError::from)?;
             total_size += fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
         }
 
@@ -95,15 +87,9 @@ impl SnapshotManager {
 
         // Save metadata
         let metadata_path = snapshot_dir.join("snapshot.json");
-        let metadata_json = serde_json::to_string_pretty(&metadata).map_err(|e| {
-            VectorDbError::Serialization {
-                message: format!("Failed to serialize snapshot metadata: {}", e),
-            }
-        })?;
+        let metadata_json = serde_json::to_string_pretty(&metadata)?;
 
-        fs::write(&metadata_path, metadata_json).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to write snapshot metadata: {}", e),
-        })?;
+        fs::write(&metadata_path, metadata_json).map_err(VectorDbError::from)?;
 
         tracing::info!("Created snapshot '{}' for collection '{}'", snapshot_name, collection_name);
 
@@ -114,31 +100,18 @@ impl SnapshotManager {
     pub fn list_snapshots(&self) -> Result<Vec<SnapshotMetadata>> {
         let mut snapshots = Vec::new();
 
-        let entries = fs::read_dir(&self.snapshots_dir).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to read snapshots directory: {}", e),
-        })?;
+        let entries = fs::read_dir(&self.snapshots_dir).map_err(VectorDbError::from)?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| VectorDbError::Io {
-                message: format!("Failed to read snapshot entry: {}", e),
-            })?;
+            let entry = entry.map_err(VectorDbError::from)?;
 
             let path = entry.path();
             if path.is_dir() {
                 let metadata_path = path.join("snapshot.json");
                 if metadata_path.exists() {
-                    let metadata_json = fs::read_to_string(&metadata_path).map_err(|e| {
-                        VectorDbError::Io {
-                            message: format!("Failed to read snapshot metadata: {}", e),
-                        }
-                    })?;
+                    let metadata_json = fs::read_to_string(&metadata_path).map_err(VectorDbError::from)?;
 
-                    let metadata: SnapshotMetadata =
-                        serde_json::from_str(&metadata_json).map_err(|e| {
-                            VectorDbError::Serialization {
-                                message: format!("Failed to parse snapshot metadata: {}", e),
-                            }
-                        })?;
+                    let metadata: SnapshotMetadata = serde_json::from_str(&metadata_json)?;
 
                     snapshots.push(metadata);
                 }
@@ -161,14 +134,9 @@ impl SnapshotManager {
             });
         }
 
-        let metadata_json = fs::read_to_string(&metadata_path).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to read snapshot metadata: {}", e),
-        })?;
+        let metadata_json = fs::read_to_string(&metadata_path).map_err(VectorDbError::from)?;
 
-        let metadata: SnapshotMetadata =
-            serde_json::from_str(&metadata_json).map_err(|e| VectorDbError::Serialization {
-                message: format!("Failed to parse snapshot metadata: {}", e),
-            })?;
+        let metadata: SnapshotMetadata = serde_json::from_str(&metadata_json)?;
 
         Ok(metadata)
     }
@@ -193,22 +161,16 @@ impl SnapshotManager {
 
         if current_checksum != metadata.checksum {
             return Err(VectorDbError::Corruption {
-                message: format!("Snapshot checksum mismatch: expected {}, got {}", metadata.checksum, current_checksum),
+                message: format!("Snapshot '{}' checksum mismatch", snapshot_name),
             });
         }
 
         // Create target directory
-        fs::create_dir_all(target_dir).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to create target directory: {}", e),
-        })?;
+        fs::create_dir_all(target_dir).map_err(VectorDbError::from)?;
 
         // Copy snapshot files to target
-        for entry in fs::read_dir(&snapshot_dir).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to read snapshot directory: {}", e),
-        })? {
-            let entry = entry.map_err(|e| VectorDbError::Io {
-                message: format!("Failed to read snapshot entry: {}", e),
-            })?;
+        for entry in fs::read_dir(&snapshot_dir).map_err(VectorDbError::from)? {
+            let entry = entry.map_err(VectorDbError::from)?;
 
             let path = entry.path();
             let filename = path.file_name().unwrap();
@@ -219,9 +181,7 @@ impl SnapshotManager {
             }
 
             let target_path = target_dir.join(filename);
-            fs::copy(&path, &target_path).map_err(|e| VectorDbError::Io {
-                message: format!("Failed to copy snapshot file: {}", e),
-            })?;
+            fs::copy(&path, &target_path).map_err(VectorDbError::from)?;
         }
 
         tracing::info!("Restored snapshot '{}' to {}", snapshot_name, target_dir.display());
@@ -239,9 +199,7 @@ impl SnapshotManager {
             });
         }
 
-        fs::remove_dir_all(&snapshot_dir).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to delete snapshot: {}", e),
-        })?;
+        fs::remove_dir_all(&snapshot_dir).map_err(VectorDbError::from)?;
 
         tracing::info!("Deleted snapshot '{}'", snapshot_name);
 
@@ -256,18 +214,12 @@ impl SnapshotManager {
         let mut hasher = DefaultHasher::new();
 
         // Hash all file contents
-        for entry in fs::read_dir(snapshot_dir).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to read snapshot directory: {}", e),
-        })? {
-            let entry = entry.map_err(|e| VectorDbError::Io {
-                message: format!("Failed to read entry: {}", e),
-            })?;
+        for entry in fs::read_dir(snapshot_dir).map_err(VectorDbError::from)? {
+            let entry = entry.map_err(VectorDbError::from)?;
 
             let path = entry.path();
             if path.is_file() && path.file_name().unwrap() != "snapshot.json" {
-                let contents = fs::read(&path).map_err(|e| VectorDbError::Io {
-                    message: format!("Failed to read file for checksum: {}", e),
-                })?;
+                let contents = fs::read(&path).map_err(VectorDbError::from)?;
                 contents.hash(&mut hasher);
             }
         }
@@ -306,21 +258,15 @@ impl SnapshotManager {
         }
 
         // Create tar.gz archive
-        let tar_file = fs::File::create(output_path).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to create archive file: {}", e),
-        })?;
+        let tar_file = fs::File::create(output_path).map_err(VectorDbError::from)?;
 
         let enc = flate2::write::GzEncoder::new(tar_file, flate2::Compression::default());
         let mut tar = tar::Builder::new(enc);
 
         tar.append_dir_all(snapshot_name, &snapshot_dir)
-            .map_err(|e| VectorDbError::Io {
-                message: format!("Failed to create tar archive: {}", e),
-            })?;
+            .map_err(VectorDbError::from)?;
 
-        tar.finish().map_err(|e| VectorDbError::Io {
-            message: format!("Failed to finish tar archive: {}", e),
-        })?;
+        tar.finish().map_err(VectorDbError::from)?;
 
         tracing::info!("Exported snapshot '{}' to {}", snapshot_name, output_path.display());
 
@@ -329,17 +275,13 @@ impl SnapshotManager {
 
     /// Import snapshot from tar.gz archive
     pub fn import_snapshot(&self, archive_path: &Path) -> Result<String> {
-        let tar_file = fs::File::open(archive_path).map_err(|e| VectorDbError::Io {
-            message: format!("Failed to open archive file: {}", e),
-        })?;
+        let tar_file = fs::File::open(archive_path).map_err(VectorDbError::from)?;
 
         let dec = flate2::read::GzDecoder::new(tar_file);
         let mut tar = tar::Archive::new(dec);
 
         tar.unpack(&self.snapshots_dir)
-            .map_err(|e| VectorDbError::Io {
-                message: format!("Failed to extract tar archive: {}", e),
-            })?;
+            .map_err(VectorDbError::from)?;
 
         // Find the imported snapshot name
         let archive_name = archive_path
