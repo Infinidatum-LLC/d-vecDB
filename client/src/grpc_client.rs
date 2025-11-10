@@ -483,7 +483,9 @@ impl VectorDbClient for GrpcClient {
                 Some(Target::TargetId(id.to_string()))
             }
             vectordb_common::search_api::DiscoveryTarget::Vector(vec) => {
-                Some(Target::TargetVector(vec.clone()))
+                Some(Target::TargetVector(vectordb_proto::TargetVector {
+                    data: vec.clone()
+                }))
             }
         };
 

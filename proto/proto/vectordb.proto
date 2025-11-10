@@ -215,11 +215,16 @@ message RecommendResponse {
   repeated QueryResult results = 1;
 }
 
+// Wrapper for target vector to use in oneof
+message TargetVector {
+  repeated float data = 1;
+}
+
 message DiscoverRequest {
   string collection_name = 1;
   oneof target {
     string target_id = 2;
-    repeated float target_vector = 3;
+    TargetVector target_vector = 3;
   }
   repeated ContextPair context_pairs = 4;
   optional string filter_json = 5;
