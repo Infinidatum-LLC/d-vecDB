@@ -375,12 +375,14 @@ async fn query_vectors(
     Query(params): Query<QueryParams>,
     Json(payload): Json<QueryVectorsRequest>,
 ) -> Result<Json<ApiResponse<Vec<QueryResult>>>, StatusCode> {
+    // TODO: Parse JSON filter into Filter type
+    // For now, simple filters are not supported via REST
     let query_request = QueryRequest {
         collection: collection_name,
         vector: payload.vector,
         limit: payload.limit.or(params.limit).unwrap_or(10),
         ef_search: payload.ef_search.or(params.ef_search),
-        filter: payload.filter,
+        filter: None,
     };
     
     match state.query(&query_request).await {
@@ -600,6 +602,7 @@ async fn import_orphaned_collection(
         distance_metric: payload.distance_metric,
         vector_type: payload.vector_type,
         index_config: IndexConfig::default(),
+        quantization: None,
     };
 
     match state.import_orphaned_collection(&orphaned_path, &payload.collection_name, &config).await {

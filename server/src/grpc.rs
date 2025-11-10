@@ -52,6 +52,7 @@ impl VectorDb for VectorDbService {
                     max_layer: ic.max_layer as usize,
                 }
             }),
+            quantization: None,
         };
         
         match self.store.create_collection(&collection_config).await {
@@ -297,17 +298,10 @@ impl VectorDb for VectorDbService {
         let start_time = std::time::Instant::now();
         let req = request.into_inner();
         
-        let filter = if req.filter.is_empty() {
-            None
-        } else {
-            Some(
-                req.filter
-                    .into_iter()
-                    .map(|(k, v)| (k, serde_json::Value::String(v)))
-                    .collect::<HashMap<String, serde_json::Value>>(),
-            )
-        };
-        
+        // TODO: Parse proto filter map into Filter type
+        // For now, simple filters are not supported via gRPC
+        let filter = None;
+
         let query_request = vectordb_common::types::QueryRequest {
             collection: req.collection_name,
             vector: req.query_vector,
@@ -429,6 +423,78 @@ impl VectorDb for VectorDbService {
             healthy: true,
             status: "OK".to_string(),
         }))
+    }
+
+    // Advanced search operations (TODO: implement)
+    async fn recommend(
+        &self,
+        _request: Request<vectordb_proto::RecommendRequest>,
+    ) -> Result<Response<vectordb_proto::RecommendResponse>, Status> {
+        Err(Status::unimplemented("Recommend API not yet implemented"))
+    }
+
+    async fn discover(
+        &self,
+        _request: Request<vectordb_proto::DiscoverRequest>,
+    ) -> Result<Response<vectordb_proto::DiscoverResponse>, Status> {
+        Err(Status::unimplemented("Discover API not yet implemented"))
+    }
+
+    async fn scroll(
+        &self,
+        _request: Request<vectordb_proto::ScrollRequest>,
+    ) -> Result<Response<vectordb_proto::ScrollResponse>, Status> {
+        Err(Status::unimplemented("Scroll API not yet implemented"))
+    }
+
+    async fn count(
+        &self,
+        _request: Request<vectordb_proto::CountRequest>,
+    ) -> Result<Response<vectordb_proto::CountResponse>, Status> {
+        Err(Status::unimplemented("Count API not yet implemented"))
+    }
+
+    async fn batch_search(
+        &self,
+        _request: Request<vectordb_proto::BatchSearchRequest>,
+    ) -> Result<Response<vectordb_proto::BatchSearchResponse>, Status> {
+        Err(Status::unimplemented("Batch search API not yet implemented"))
+    }
+
+    // Snapshot operations (TODO: implement)
+    async fn create_snapshot(
+        &self,
+        _request: Request<vectordb_proto::CreateSnapshotRequest>,
+    ) -> Result<Response<vectordb_proto::CreateSnapshotResponse>, Status> {
+        Err(Status::unimplemented("Create snapshot not yet implemented"))
+    }
+
+    async fn list_snapshots(
+        &self,
+        _request: Request<vectordb_proto::ListSnapshotsRequest>,
+    ) -> Result<Response<vectordb_proto::ListSnapshotsResponse>, Status> {
+        Err(Status::unimplemented("List snapshots not yet implemented"))
+    }
+
+    async fn get_snapshot(
+        &self,
+        _request: Request<vectordb_proto::GetSnapshotRequest>,
+    ) -> Result<Response<vectordb_proto::GetSnapshotResponse>, Status> {
+        Err(Status::unimplemented("Get snapshot not yet implemented"))
+    }
+
+    async fn delete_snapshot(
+        &self,
+        _request: Request<vectordb_proto::DeleteSnapshotRequest>,
+    ) -> Result<Response<vectordb_proto::DeleteSnapshotResponse>, Status> {
+        Err(Status::unimplemented("Delete snapshot not yet implemented"))
+    }
+
+    async fn restore_snapshot(
+        &self,
+        _request: Request<vectordb_proto::RestoreSnapshotRequest>,
+    ) -> Result<Response<vectordb_proto::RestoreSnapshotResponse>, Status> {
+        Err(Status::unimplemented("Restore snapshot not yet implemented"))
     }
 }
 

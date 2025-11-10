@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 vectordb-common = { path = "../common" }
 vectordb-proto = { path = "../proto" }
+vectordb-storage = { path = "../storage" }
 tokio = { workspace = true }
 tonic = { workspace = true }
 serde = { workspace = true }

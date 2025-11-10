@@ -250,11 +250,12 @@ impl VectorDbClient for RestClient {
             filter: Option<HashMap<String, serde_json::Value>>,
         }
 
+        // TODO: Convert Filter to JSON HashMap format
         let request_body = QueryVectorsRequest {
             vector: request.vector.clone(),
             limit: Some(request.limit),
             ef_search: request.ef_search,
-            filter: request.filter.clone(),
+            filter: None, // Filter conversion not yet supported
         };
 
         let http_request = self.client

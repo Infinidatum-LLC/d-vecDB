@@ -197,6 +197,7 @@ impl VectorDbClient for GrpcClient {
                     max_layer: ic.max_layer as usize,
                 }
             }),
+            quantization: None,
         };
 
         let stats = CommonCollectionStats {
@@ -279,16 +280,13 @@ impl VectorDbClient for GrpcClient {
 
     #[instrument(skip(self, request))]
     async fn query(&self, request: &QueryRequest) -> Result<Vec<QueryResult>> {
+        // TODO: Convert Filter to proto HashMap format
         let proto_request = vectordb_proto::QueryRequest {
             collection_name: request.collection.clone(),
             query_vector: request.vector.clone(),
             limit: request.limit as u32,
             ef_search: request.ef_search.map(|ef| ef as u32),
-            filter: request.filter.as_ref().map_or(HashMap::new(), |filter| {
-                filter.iter()
-                    .map(|(k, v)| (k.clone(), v.to_string()))
-                    .collect()
-            }),
+            filter: HashMap::new(), // Filter conversion not yet supported
         };
 
         let response = self.with_retry(|| async {

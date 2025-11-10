@@ -3812,6 +3812,7 @@ dependencies = [
  "uuid",
  "vectordb-common",
  "vectordb-proto",
+ "vectordb-storage",
 ]
 
 [[package]]

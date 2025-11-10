@@ -177,6 +177,7 @@ async fn handle_collections_command(client: &dyn VectorDbClient, matches: &ArgMa
                 distance_metric,
                 vector_type: VectorType::Float32,
                 index_config: IndexConfig::default(),
+                quantization: None,
             };
 
             client.create_collection(&config).await?;
